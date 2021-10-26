@@ -454,17 +454,17 @@ Resources:
       VpcId: !Ref VPCID
       SecurityGroupIngress: 
         - CidrIp: !Ref OrthancSourceCIDR
-          FromPort: !Ref OrthancPort
+          FromPort: 8042
           IpProtocol: tcp
-          ToPort: !Ref OrthancPort
+          ToPort: 8042
         - CidrIp: !Ref OrthancSourceCIDR
           FromPort: 4242
           IpProtocol: tcp
           ToPort: 4242
-        - FromPort: !Ref OrthancPort
+        - FromPort: 8042
           IpProtocol: tcp
           SourceSecurityGroupId: !Ref SGDeIdentifier
-          ToPort: !Ref OrthancPort
+          ToPort: 8042
         - CidrIp: !Ref VPCCIDR
           FromPort: 8042
           IpProtocol: tcp
@@ -494,14 +494,14 @@ Resources:
       SecurityGroupIngress:
         - Fn::If:
             - DeployAll
-            - FromPort: !Ref OrthancPort
+            - FromPort: 8042
               IpProtocol: tcp
               SourceSecurityGroupId: !Ref SGDeIdentifier
-              ToPort: !Ref OrthancPort
+              ToPort: 8042
             - CidrIp: !Ref OrthancSourceCIDR
-              FromPort: !Ref OrthancPort
+              FromPort: 8042
               IpProtocol: tcp
-              ToPort: !Ref OrthancPort
+              ToPort: 8042
         - Fn::If:
             - DeployAll
             - !Ref AWS::NoValue
@@ -509,18 +509,18 @@ Resources:
               FromPort: 4242
               IpProtocol: tcp
               ToPort: 4242
-        - FromPort: !Ref OrthancPort
+        - FromPort: 8042
           IpProtocol: tcp
           SourceSecurityGroupId: !Ref SGChangePooler2
-          ToPort: !Ref OrthancPort
-        - FromPort: !Ref OrthancPort
+          ToPort: 8042
+        - FromPort: 8042
           IpProtocol: tcp
           SourceSecurityGroupId: !Ref SGWebsite
-          ToPort: !Ref OrthancPort
-        - FromPort: !Ref OrthancPort
+          ToPort: 8042
+        - FromPort: 8042
           IpProtocol: tcp
           SourceSecurityGroupId: !Ref SGWebsiteWorker
-          ToPort: !Ref OrthancPort
+          ToPort: 8042
         - CidrIp: !Ref VPCCIDR
           FromPort: 8042
           IpProtocol: tcp
