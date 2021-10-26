@@ -1,0 +1,18 @@
+{% extends 'layout.html' %}
+
+{% block content %}
+
+  <h2 class="pb-2 border-bottom">Preview a DICOM Instance</h2>
+  
+  {% for i in range(nb_frames_to_show) %}
+  
+    <div class="pt-5">Frame {{ i + 1 }}</div>
+    <div><img src="/aws/instances/{{ instance_id }}/frames/{{ i }}/preview" class="img-fluid"></div>
+    
+  {% endfor %}
+  
+  {% if nb_frames_total > 10 %}
+    <div class="pt-5">The instance has {{ nb_frames_total }} frames. The frames 11 and above are not previewed in this page.</div>
+  {% endif %}
+
+{% endblock %}

@@ -1,0 +1,174 @@
+{% extends 'layout.html' %}
+
+{% block content %}
+
+  <h2 class="pb-2 border-bottom">Export DICOM Instances to Amazon S3</h2>
+  
+  {% if error_message %}
+  
+    <div class="alert alert-danger mt-5" role="alert">{{ error_message }}</div>
+  
+  {% endif %}
+  
+  <div class="mt-5 p-4 border bg-light">
+    <form method="post">
+      
+      <div class="mb-3">
+        <label for="query" class="form-label">Enter a query to search for DICOM instances (click "Help Me!") or leave blank to return all available DICOM instances</label>
+        <div class="row">
+          <div class="col">
+            <textarea class="form-control" id="query" name="query" rows="2">{% if request.form.get('query') %}{{ request.form.get('query') }}{% endif %}</textarea>
+          </div>
+          <div class="col-auto">
+            <a class="btn btn-outline-primary" data-bs-toggle="collapse" href="#helpQuery" role="button" aria-expanded="false" aria-controls="helpQuery">Help Me!</a>  
+          </div>
+        </div>
+      </div>
+      
+      <div class="collapse mb-3" id="helpQuery">
+        <div class="card card-body border-primary">
+          {% include 'query_help.html' %}
+        </div>
+      </div>
+      
+      <div class="row mb-3">
+        <div class="col-1">
+          <label for="format" class="col-form-label">Export as</label>
+        </div>
+        <div class="col-2">
+          <select class="form-select" name="format">
+            <option value="dicom" {% if request.form.get('format') == 'dicom' %}selected{% endif %}>DICOM</option>
+            <option value="png" {% if request.form.get('format') == 'png' %}selected{% endif %}>PNG</option>
+            <option value="jpeg" {% if request.form.get('format') == 'jpeg' %}selected{% endif %}>JPEG</option>
+          </select>
+        </div>
+        <div class="col-3 form-check align-self-center">
+          <input class="form-check-input" type="checkbox" name="json" id="json" {% if request.form.get('json') == 'on' %}checked{% endif %}>
+          <label class="form-check-label" for="json">Export DICOM tags as JSON</label>
+        </div>
+        <div class="col-2 text-end">
+          <label for="transcode" class="col-form-label">Transcode DICOM to</label>
+        </div>
+        <div class="col">
+          <input type="text" id="transcode" name="transcode" class="form-control" placeholder="Optional Transfer Syntax ID" value="{% if request.form.get('transcode') %}{{ request.form.get('transcode') }}{% endif %}">
+        </div>
+        <div class="col-auto">
+          <a class="btn btn-outline-primary" data-bs-toggle="collapse" href="#helpExport" role="button" aria-expanded="false" aria-controls="helpExport">Help Me!</a>  
+        </div>
+      </div>
+      
+      <div class="collapse mb-3" id="helpExport">
+        <div class="card card-body border-primary">
+          <p><strong>Export as: </strong>If you choose "DICOM", each DICOM instance is exported as a DCM file. If you choose "PNG" or "JPEG", each frame of each DICOM file is exported as an image.</p>
+          <p><strong>Export DICOM tags as JSON: </strong>If this option is selected, a JSON representation of the DICOM file is also exported to Amazon S3.</p>
+          <p><strong>Transcode DICOM to: </strong>If you choose "DICOM" in "Export as", a transcoded copy of DCM file is exported to Amazon S3 if you provide a transfer syntax.</p>
+        </div>
+      </div>
+      
+      <div class="row mb-3">
+        <div class="col-2">
+          <label for="s3_path" class="col-form-label">S3 Path</label>
+        </div>
+        <div class="col-10">
+          <input type="text" id="s3_path" name="s3_path" class="form-control" placeholder="s3://bucket/prefix/" value="{% if request.form.get('s3_path') %}{{ request.form.get('s3_path') }}{% endif %}">
+        </div>
+      </div>
+      
+      <div class="row mb-3">
+        <div class="col-6">
+          <div class="row mb-3">
+            <div class="col-4">
+              <label for="access_key" class="col-form-label">AWS Access Key</label>
+            </div>
+            <div class="col-8">
+              <input type="text" id="access_key" name="access_key" class="form-control">
+            </div>
+          </div>
+          <div class="row mb-3">
+            <div class="col-4">
+              <label for="secret_key" class="col-form-label">AWS Secret Key</label>
+            </div>
+            <div class="col-8">
+              <input type="password" id="secret_key" name="secret_key" class="form-control">
+            </div>
+          </div>
+          <div class="row">
+            <div class="col-4">
+              <label for="session_token" class="col-form-label">AWS Session Token</label>
+            </div>
+            <div class="col-8">
+              <input type="password" id="session_token" name="session_token" class="form-control">
+            </div>
+          </div>
+        </div>
+        <div class="col-5 align-self-center text-secondary">
+          You must provide AWS credentials that are authorized to write objects to the S3 bucket. You must provide an Access Key, a Secret Key, and optionally a Session Token for temporary credentials. The credentials are deleted from the system after the export task completes.
+        </div>
+      </div>
+      
+      <button type="submit" class="btn btn-primary me-md-3">Export Instances</button>
+      
+    </form>
+  </div>
+  
+  {% if tasks|length > 0 %}
+  
+    <div class="mt-5 mb-5">
+      <div class="px-3 pb-3 text-secondary">List of export tasks that you previously submitted</div>
+      <table class="table table-bordered">
+        
+        <thead>
+          <tr>
+            <th>Date</th>
+            <th>Status</th>
+            <th>Exported</th>
+            <th>Failed</th>
+            <th>Details</th>
+          </tr>
+        </thead>
+        <tbody>
+          
+        {% for task in tasks %}
+        
+          <tr>
+            <td>{{ task.Date }}</td>
+            <td>{{ task.Status }}</td>
+            <td class="text-success">{% if 'NbExported' in task.Results %}{{ task.Results.NbExported }} instances{% endif %}</td>
+            <td class="text-danger">{% if 'NbFailed' in task.Results %}{{ task.Results.NbFailed }} instances{% endif %}</td>
+            <td><a class="link-primary" href="#" data-bs-toggle="modal" data-bs-target="#taskDetails{{ loop.index }}">Show Details</a></td>
+          </tr>
+        
+        {% endfor %}
+          
+        </tbody>
+      </table>
+    </div>
+    
+    {% for task in tasks %}
+    
+      <div class="modal fade" id="taskDetails{{ loop.index }}" tabindex="-1" aria-labelledby="taskDetails{{ loop.index }}Label" aria-hidden="true">
+        <div class="modal-dialog">
+          <div class="modal-content">
+            <div class="modal-header">
+              <h5 class="modal-title" id="taskDetails{{ loop.index }}Label">Export Task Details</h5>
+              <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+              <p><strong>Query: </strong> {{ task.Parameters.Query }}</p>
+              <p><strong>Export as: </strong> {{ task.Parameters.Format }}</p>
+              <p><strong>Export DICOM tags as JSON: </strong> {{ task.Parameters.ExportJSON }}</p>
+              <p><strong>Transcode to: </strong> {{ task.Parameters.Transcode }}</p>
+              <p><strong>S3 Path: </strong> s3://{{ task.Parameters.S3Bucket }}/{{ task.Parameters.S3Prefix }}</p>
+              {% if 'Errors' in task.Results %}
+                <p><strong>Distinct error messages: </strong> {{ task.Results.Errors }}</p>
+              {% endif %}
+            </div>
+          </div>
+        </div>
+      </div>
+    
+    {% endfor %}
+  
+  {% endif %}
+
+{% endblock %}

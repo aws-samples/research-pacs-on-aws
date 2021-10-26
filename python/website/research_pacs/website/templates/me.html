@@ -1,0 +1,84 @@
+{% extends 'layout.html' %}
+
+{% block content %}
+
+  <h2 class="pb-2 border-bottom">My Permissions</h2>
+  <div class="row g-5 py-5">
+    
+    <div class="col-6">
+      <div class="p-4 border bg-light">
+        <h4>My User Name</h4>
+        <p>{{ g.user }}</p>
+      </div>
+    </div>
+    
+    <div class="col-6">
+      <div class="p-4 border bg-light">
+        <h4>My Groups</h4>
+        <ul>
+          {% for group in g.groups %}
+            <li>{{ group }}</li>
+          {% endfor %}
+        </ul>
+      </div>
+    </div>
+    
+    <div class="col-12">
+      <div class="p-4 border bg-light">
+        <h4 class="pb-2">My Profiles</h4>
+        <div class="accordion" id="accordionProfiles">
+          
+          {% for profile_name, profile in profiles.items() %}
+          
+            <div class="accordion-item">
+              <h2 class="accordion-header" id="heading{{ loop.index }}">
+                <button class="accordion-button collapsed" type="button" data-bs-toggle="collapse" data-bs-target="#collapse{{ loop.index }}" aria-expanded="false" aria-controls="collapse{{ loop.index }}">
+                  {{ profile_name }}
+                </button>
+              </h2>
+              <div id="collapse{{ loop.index }}" class="accordion-collapse collapse" aria-labelledby="heading{{ loop.index }}">
+                <div class="accordion-body">
+                  
+                  <p><strong>Description:</strong> {{ profile.Description }}</p>
+                  
+                  <p>
+                    <strong>Instance permissions: </strong>
+                    {% if profile.DICOMQueryFilter is defined %}
+                      This profile allows you to access only the DICOM instances that match the following query: <code>{{ profile.DICOMQueryFilter }}</code>.
+                    {% else %}
+                      This profile allows you to access all the DICOM instances available in this Research PACS.
+                    {% endif %}
+                  </p>
+                  
+                  <p>
+                    <strong>Orthanc access: </strong>
+                    {% if profile.OrthancPathPatternsAllowed is defined %}
+                      This profile allows you to access the underlying Orthanc server that stores de-identified DICOM instances, 
+                      and use Orthanc Explorer and other Orthanc native APIs to browse and retrieve instances. 
+                      The list below contains the patterns of requests that you are allowed or denied to make to Orthanc:
+                      <ul>
+                        {% for deny_request in profile.OrthancPathPatternsDenied %}
+                          <li class="text-danger">Denies: <code class="text-danger">{{ deny_request }}</code></li>
+                        {% endfor %}
+                        {% for allow_request in profile.OrthancPathPatternsAllowed %}
+                          <li class="text-success">Allows: <code class="text-success">{{ allow_request }}</code></li>
+                        {% endfor %}
+                      </ul>
+                    {% else %}
+                      This profile does not allow you to make direct requests to the underlying Orthanc server that stores de-identified DICOM instances, 
+                      in order to use Orthanc Explorer and other Orthanc native APIs. You can only browse or retrieve instances using this portal.
+                    {% endif %}
+                  </p>
+                  
+                </div>
+              </div>
+            </div>
+            
+          {% endfor %}
+          
+        </div>
+      </div>
+    </div>
+  </div>
+  
+{% endblock %}

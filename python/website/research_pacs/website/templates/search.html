@@ -1,0 +1,142 @@
+{% extends 'layout.html' %}
+
+{% block content %}
+
+  <h2 class="pb-2 border-bottom">Search DICOM Instances</h2>
+  
+  {% if error_message %}
+  
+    <div class="alert alert-danger mt-5" role="alert">{{ error_message }}</div>
+    
+  {% endif %}
+  
+  <div class="mt-5 p-4 border bg-light">
+    <form>
+      
+      <div class="mb-3">
+        <label for="query" class="form-label">Enter a query to search for DICOM instances (click "Help Me!") or leave blank to return all available DICOM instances</label>
+        <div class="row">
+          <div class="col">
+            <textarea class="form-control" id="query" name="query" rows="2">{% if request.args.get('query') %}{{ request.args.get('query') }}{% endif %}</textarea>
+          </div>
+          <div class="col-auto">
+            <a class="btn btn-outline-primary" data-bs-toggle="collapse" href="#queryHelp" role="button" aria-expanded="false" aria-controls="queryHelp">Help Me!</a>  
+          </div>
+        </div>
+      </div>
+      
+      <div class="collapse mb-3" id="queryHelp">
+        <div class="card card-body border-primary">
+          {% include 'query_help.html' %}
+        </div>
+      </div>
+      
+      <div>
+        <button type="submit" name="display" class="btn btn-primary me-md-3">Display Results</button>
+        <button type="submit" name="export" class="btn btn-primary me-md-3">Export Results</button>
+      </div>
+      
+    </form>
+  </div>
+  
+  {% if results is defined %}
+  
+    <div class="mt-5 mb-5">
+      <div class="pb-3">
+        <nav aria-label="Nav">
+          <ul class="pagination justify-content-center">
+            
+            <li class="page-item disabled col-auto">
+              <a class="page-link" href="#" aria-disabled="true">
+                <strong>{{ pagination.TotalInstances }}</strong> instances in {{ pagination.TotalSeries }} series
+              </a>
+            </li>
+            
+            {% if pagination.PreviousEnabled %}
+              <li class="page-item"><a class="page-link" href="{{ pagination.PreviousLink }}">Previous ({{ pagination.PreviousRange }})</a></li>
+            {% else %}
+              <li class="page-item disabled"><a class="page-link" href="#"  aria-disabled="true">Previous</a></li>
+            {% endif %}
+            
+            {% if pagination.NextEnabled %}
+              <li class="page-item"><a class="page-link" href="{{ pagination.NextLink }}">Next ({{ pagination.NextRange }})</a></li>
+            {% else %}
+              <li class="page-item disabled"><a class="page-link" href="#"  aria-disabled="true">Next</a></li>
+            {% endif %}
+            
+          </ul>
+        </nav>
+      </div>
+      <div class="accordion">
+        
+        {% for series in results %}
+        
+          <div class="accordion-item">
+            <h2 class="accordion-header" id="headingS-{{ series.SeriesId }}">
+              <button class="accordion-button collapsed" type="button" data-bs-toggle="collapse" data-bs-target="#collapseS-{{ series.SeriesId }}" aria-expanded="false" aria-controls="collapseS-{{ series.SeriesId }}">
+                <table>
+                  <tr>
+                    <td class="bg-dark text-white px-2">Series</td>
+                    <td class="ps-3">{% autoescape false %}{{ series.SeriesHeader }}{% endautoescape %}</td>
+                  </tr>
+                </table>
+              </button>
+            </h2>
+            <div id="collapseS-{{ series.SeriesId }}" class="accordion-collapse collapse" aria-labelledby="headingS-{{ series.SeriesId }}">
+              <div class="accordion-body p-4">
+                <div class="accordion">
+                  
+                  {% for instance in series.Instances %}
+                  
+                    <div class="accordion-item">
+                      <h2 class="accordion-header" id="headingI-{{ instance.InstanceId }}">
+                        <button class="accordion-button collapsed" type="button" data-bs-toggle="collapse" data-bs-target="#collapseI-{{ instance.InstanceId }}" aria-expanded="false" aria-controls="collapseI-{{ instance.InstanceId }}">
+                          <table>
+                            <tr>
+                              <td class="bg-secondary text-white px-2">Instance</td>
+                              <td class="ps-3">{% autoescape false %}{{ instance.InstanceHeader }}{% endautoescape %}</td>
+                            </tr>
+                          </table>
+                        </button>
+                      </h2>
+                      <div id="collapseI-{{ instance.InstanceId }}" class="accordion-collapse collapse" aria-labelledby="headingI-{{ instance.InstanceId }}">
+                        <div class="accordion-body">
+                  
+                          <div class="position-relative">
+                            <div class="position-absolute top-0 end-0">
+                              <div class="btn-group">
+                                <button type="button" class="btn btn-primary dropdown-toggle" data-bs-toggle="dropdown" aria-expanded="false">
+                                  Action
+                                </button>
+                                <ul class="dropdown-menu dropdown-menu-end">
+                                  {% if orthanc_access %}
+                                    <li><a class="dropdown-item" href="/app/explorer.html#instance?uuid={{ instance.InstanceId }}" target="_blank">Open in Orthanc Explorer</a></li>
+                                  {% endif %}
+                                  <li><a class="dropdown-item" href="/aws/instances/{{ instance.InstanceId }}/preview">Preview the instance</a></li>
+                                  <li><a class="dropdown-item" href="/aws/instances/{{ instance.InstanceId }}/download">Download the instance (DCM)</a></li>
+                                  <li><a class="dropdown-item" href="/aws/series/{{ series.SeriesId }}/download">Download the series (ZIP)</a></li>
+                                </ul>
+                              </div>
+                            </div>
+                          </div>
+                          <pre>{% autoescape false %}{{ instance.InstanceJSON }}{% endautoescape %}</pre>
+                          
+                        </div>
+                      </div>
+                    </div>
+                    
+                  {% endfor %}
+                
+                </div>
+              </div>
+            </div>
+          </div>
+        
+        {% endfor %}
+        
+      </div>
+    </div>
+
+  {% endif %}
+
+{% endblock %}

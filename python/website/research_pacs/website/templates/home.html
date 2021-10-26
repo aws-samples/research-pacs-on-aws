@@ -1,0 +1,62 @@
+{% extends 'layout.html' %}
+
+{% block content %}
+
+  <h2 class="pb-2 border-bottom">Research PACS on AWS</h2>
+
+  <div class="row g-5 py-5 row-cols-1 row-cols-lg-3">
+    <div class="col d-flex align-items-start">
+      <div>
+        <h2>Search </h2>
+        <p>Search for DICOM instances in the Research PACS using query parameters based on DICOM tags. Preview or download the search results.</p>
+        <a href="/aws/search" class="btn btn-primary">
+          Search DICOM Instances
+        </a>
+      </div>
+    </div>
+    
+    <div class="col d-flex align-items-start">
+      <div>
+        <h2>Export</h2>
+        <p>Export the DICOM instances to Amazon S3. For convenience, pixel data can be exported to PNG or JPEG, and DICOM tags to JSON.</p>
+        <a href="/aws/export" class="btn btn-primary">
+          Export DICOM Instances to S3
+        </a>
+      </div>
+    </div>
+    
+    {% if orthanc_access %}
+      <div class="col d-flex align-items-start">
+        <div>
+          <h2>Browse</h2>
+          <p>Browse DICOM instances in the native Orthanc user interface, Orthanc Explorer, and use the Orthanc integrations or plugins.</p>
+          <a href="/app/explorer.html" class="btn btn-primary" target="_blank">
+            Go to Orthanc Explorer
+          </a>
+        </div>
+      </div>
+    {% endif %}
+    
+    <div class="col d-flex align-items-start">
+      <div>
+        <h2>Permissions</h2>
+        <p>View the profiles assigned to you or the groups you belong to, as well as the permissions granted by these profiles.</p>
+        <a href="/aws/me" class="btn btn-primary">
+          See My Permissions
+        </a>
+      </div>
+    </div>
+    
+    <div class="col d-flex align-items-start">
+      <div>
+        <h2>Help</h2>
+        <p>Need some help to use this self-service portal? Read this user guide, or contact your Research PACS administrator.</p>
+        <a href="{{ user_guide_url }}" class="btn btn-primary" target="_blank">
+          Read the User Guide
+        </a>
+      </div>
+    </div>
+    
+  </div>
+
+{% endblock %}

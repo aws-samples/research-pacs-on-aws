@@ -1,0 +1,34 @@
+<p>
+  A query is composed of one or more conditions, combined with <code>AND</code> or <code>OR</code> operands. 
+  You can also enclose multiple conditions and operands in parenthesis <code>()</code> in order to change the predecence of operands 
+  (e.g. <code>(Condition1 OR Condition2) AND Condition3)</code>.
+</p>
+
+<p>
+  Each condition is defined as <code>Tag Operator [Value]</code> where a <code>Value</code> is required for some operators only.
+</p>
+
+<p>
+  <strong>Tag</strong> can be a case-sensitive keyword (e.g. <code>Modality</code>), a hexadecimal number (e.g. <code>7FE00010</code>), 
+  or a sequence of tags separated by dots (e.g. <code>SequenceOfUltrasoundRegions.RegionSpatialFormat</code>, <code>00186011.RegionSpatialFormat</code>)
+</p>
+
+<p>
+  <strong>Operator</strong> can be:
+  <ul>
+    <li><code>Exists</code> (no value needed): The data element must exist</li>
+    <li><code>NotExists</code> (no value needed): The data element must not exist</li>
+    <li><code>Empty</code> (no value needed): At least one value of the data element must be empty</li>
+    <li><code>NotEmpty</code> (no value needed): At least one value of the data element must not be empty</li>
+    <li><code>StrEquals</code> (value is a string, wilcard <code>*</code> allowed): Must equal value, or match value if <code>*</code> are used (case insensitive)</li>
+    <li><code>StrNotEquals</code> (value is a string, wilcard <code>*</code> allowed): Must not equal value, and must not match value if <code>*</code> are used (case insensitive)</li>
+    <li><code>NbEquals</code> (value is a integer or decimal): Must equals value</li>
+    <li><code>NbNotEquals</code> (value is a integer or decimal): Must not equal value</li>
+    <li><code>NbGreater</code> (value is a integer or decimal): Must be greater than value</li>
+    <li><code>NbLess</code> (value is a integer or decimal): Must be less than value</li>
+  </ul>
+</p>
+
+<p>
+  You can find further etails and examples of valid queries in the <strong>User Guide</strong>.
+</p>

@@ -1,0 +1,2219 @@
+# Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
+# SPDX-License-Identifier: MIT-0
+
+AWSTemplateFormatVersion: 2010-09-09
+Description: Deploy the Research PACS on AWS solution
+
+Parameters:
+
+  # Network
+  VPCID:
+    Type: AWS::EC2::VPC::Id
+    Description: >
+      ID of the VPC where the solution resources will be provisioned
+  VPCCIDR:
+    Type: String
+    AllowedPattern: ^((\d{1,3})\.){3}\d{1,3}\/\d{1,2}$
+    Description: >
+      CIDR-formatted IP range tof the VPC that you choosed in "VPC ID" (copy the value displayed 
+      above)
+  PrivateSubnetIDs:
+    Type: List<AWS::EC2::Subnet::Id>
+    Description: >
+      ID of the subnets where all resources will be provisioned, except the Orthanc server that 
+      receives medical images from the clinical PACS and the Application Load Balancer. You must 
+      select at least two subnets in two different AZs.
+
+  # Network - Orthanc
+  OrthancSubnetIDs:
+    Type: List<AWS::EC2::Subnet::Id>
+    Description: >
+      ID of the subnets where the Orthanc server that receives medical images from the clinical 
+      PACS will be provisioned. You must select at least two subnets in two different AZs.
+  OrthancSourceCIDR:
+    Type: String
+    Default: "0.0.0.0/0"
+    AllowedPattern: ^((\d{1,3})\.){3}\d{1,3}\/\d{1,2}$
+    Description: >
+      CIDR-formatted IP range that is allowed access to the Orthanc server on the port 8042 
+      (Orthanc Explorer and API) and 4242 (DICOM)
+  OrthancExposure:
+    Type: String
+    AllowedValues:
+      - Internet-facing
+      - Internal
+    Default: Internet-facing
+    Description: >
+      Choose "Internet-facing" to make the Orthanc server that receives medical images from the 
+      clinical PACS accessible from the Internet (public IP addresses). Choose "Internal" to make 
+      it accessible only from private networks (private IP addresses).
+  OrthancPort:
+    Type: Number
+    Default: 8042
+    Description: >
+      TCP port to use for the Orthanc HTTP server that receives medical images from the clinical 
+      PACS
+
+  # Network - Application Load Balancer
+  ALBSubnetIDs:
+    Type: List<AWS::EC2::Subnet::Id>
+    Description: >
+      ID of the subnets where the Application Load Balancer that exposes the self-service portal 
+      will be provisioned. You must select at least two subnets in two different AZs.
+  ALBExposure:
+    Type: String
+    AllowedValues:
+      - Internet-facing
+      - Internal
+    Default: Internet-facing
+    Description: >
+      Choose "Internet-facing" to make the Application Load Balancer accessible from the Internet 
+      (public IP addresses). Choose "Internal" to make the ALB accessible only from private 
+      networks (private IP addresses)
+  ALBSourceCIDR:
+    Type: String
+    Default: "0.0.0.0/0"
+    AllowedPattern: ^((\d{1,3})\.){3}\d{1,3}\/\d{1,2}$
+    Description: >
+      CIDR-formatted IP range that is allowed HTTPS access to the Application Load Balancer
+  ALBCertificateArn:
+    Type: String
+    Description: >
+      To use an existing ACM certificate when creating the Application Load Balancer, enter its 
+      ARN. Leave blank to generate a self-signed certificate
+      
+  # Database
+  DBInstanceType:
+    Type: String
+    Default: db.t3.medium
+    Description: >
+      DB instance type to use to provision the create the Aurora DB cluster
+  DBMultiAZ:
+    Type: String
+    Default: "Yes"
+    AllowedValues:
+      - "Yes"
+      - "No"
+    Description: >
+      Choose "Yes" to create two DB instances to improve the availability of the DB cluster
+
+  # Cognito
+  CognitoDomain:
+    Type: String
+    Default: rpacs-12345678
+    Description: >
+      Enter a domain name to use configure the address of your sign-in webpage. This domain name 
+      must be unique across all AWS customers. For example, you could start from the default value 
+      "rpacs-12345678" and replace "12345678" by your own number.
+  AdminUserName:
+    Type: String
+    Description: >
+      Enter the user name of the administrator user to create in the User Pool
+  AdminUserEmail:
+    Type: String
+    Description: >
+      Enter the e-mail address of the administrator user to create in the User Pool. Amazon 
+      Cognito will send an invitation message to initialize the password.
+
+  # Solution Configuration
+  DeploymentPattern:
+    Type: String
+    AllowedValues:
+      - All components
+      - Self-service portal only
+    Default: All components
+    Description: >
+      Choose "All components" to deploy all solution components. Choose "Self-service portal only" 
+      to not deploy the first Orthanc server and the de-identifier
+  GitHubRepoURL:
+    Type: String
+    Default: https://github.com/aws-samples/research-pacs-on-aws
+    Description: >
+      URL of the GitHub repository where the solution artifacts are stored
+  GitHubRepoBranch:
+    Type: String
+    Default: main
+    Description: >
+      Branch of the GitHub repository to use
+  OrthancDockerVersion:
+    Type: String
+    Default: latest
+    Description: >
+      Version of the Osimis Docker image to use. By default, the solution uses the latest version 
+      available. You can provide a specific version listed at 
+      https://hub.docker.com/r/osimis/orthanc/tags. 
+      The solution was successfully test with the version 21.9.2
+  S3PluginBranch:
+    Type: String
+    Default: default
+    Description: >
+      Branch of the Cloud Object Storage plugin to use. By default, the solution uses the latest version 
+      available (branch "default"). You can provide a specific version listed at 
+      https://hg.orthanc-server.com/orthanc-object-storage/branches. 
+      The solution was successfully test with the branch 1.3.3
+  RekognitionRegion:
+    Type: String
+    Description: >
+      If you plan to use burned-in text annotation detection with OCR, and if Amazon Rekognition is not 
+      available in the current region, enter the name of the region where to use this service (e.g. 
+      us-east-1). Leave blank to use Amazon Rekognition in the current region.
+
+Metadata: 
+  AWS::CloudFormation::Interface: 
+    ParameterGroups: 
+      - Label: 
+          default: Network
+        Parameters: 
+          - VPCID
+          - VPCCIDR
+          - PrivateSubnetIDs
+      - Label: 
+          default: Network - Orthanc
+        Parameters: 
+          - OrthancSubnetIDs
+          - OrthancSourceCIDR
+          - OrthancExposure
+          - OrthancPort
+      - Label: 
+          default: Network - Application Load Balancer
+        Parameters: 
+          - ALBSubnetIDs
+          - ALBExposure
+          - ALBSourceCIDR
+          - ALBCertificateArn
+      - Label: 
+          default: Database
+        Parameters: 
+          - DBInstanceType
+          - DBMultiAZ
+      - Label: 
+          default: Amazon Cognito
+        Parameters: 
+          - CognitoDomain
+          - AdminUserName
+          - AdminUserEmail
+      - Label: 
+          default: Solution Configuration
+        Parameters: 
+          - DeploymentPattern
+          - GitHubRepoURL
+          - GitHubRepoBranch
+          - OrthancDockerVersion
+          - S3PluginBranch
+          - RekognitionRegion
+
+    ParameterLabels:
+      VPCID:
+        default: VPC ID
+      VPCCIDR:
+        default: VPC CIDR
+      PrivateSubnetIDs:
+        default: Private Subnet IDs
+      OrthancSubnetIDs:
+        default: Orthanc Subnet IDs
+      OrthancSourceCIDR:
+        default: Orthanc Source CIDR
+      OrthancExposure:
+        default: Orthanc Exposure
+      OrthancPort:
+        default: Orthanc Port
+      ALBSubnetIDs:
+        default: ALB Subnet IDs
+      ALBExposure:
+        default: ALB Exposure
+      ALBSourceCIDR:
+        default: ALB Source CIDR
+      ALBCertificateArn:
+        default: ACM Certificate ARN
+      DBInstanceType:
+        default: DB Instance Type
+      DBMultiAZ:
+        default: DB Multi-AZ
+      CognitoDomain:
+        default: User Pool Domain
+      AdminUserName:
+        default: Admin Username
+      AdminUserEmail:
+        default: Admin E-mail Address
+      DeploymentPattern:
+        default: Deployment Pattern
+      GitHubRepoURL:
+        default: GitHub Repository URL
+      GitHubRepoBranch:
+        default: GitHub Repository Branch
+      OrthancDockerVersion:
+        default: Osimis Orthanc Docker
+      S3PluginBranch:
+        default: S3 Plugin Branch
+      RekognitionRegion:
+        default: AWS Region for Rekognition
+
+Conditions:
+
+  DeployAll: !Equals [!Ref DeploymentPattern, 'All components']
+  NotDeployAll: !Not [!Condition DeployAll]
+  IsNLB1Public: !Equals [!Ref OrthancExposure, 'Internet-facing']
+  IsNLB2Public: !And [!Condition IsNLB1Public, !Not [!Condition DeployAll]]
+  IsALBPublic: !Equals [!Ref ALBExposure, 'Internet-facing']
+  UseSelfSignedCertificate: !Equals [!Ref ALBCertificateArn, '']
+  IsDBMultiAZ: !Equals [!Ref DBMultiAZ, 'Yes']
+  RekognitionSameRegion: !Equals [!Ref RekognitionRegion, '']
+
+Resources:
+
+  # S3 bucket
+  Bucket:
+    Type: AWS::S3::Bucket
+    Properties: 
+      BucketEncryption: 
+        ServerSideEncryptionConfiguration: 
+          - BucketKeyEnabled: true
+            ServerSideEncryptionByDefault: 
+              SSEAlgorithm: aws:kms
+      PublicAccessBlockConfiguration: 
+        BlockPublicAcls: true
+        BlockPublicPolicy: true
+        IgnorePublicAcls: true
+        RestrictPublicBuckets: true
+
+  S3PutLambdaRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: lambda.amazonaws.com
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
+      Policies:
+        - PolicyName: main
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action: s3:PutObject
+                Resource: !Sub ${Bucket.Arn}/config/*
+
+  S3PutLambdaFunction:
+    Type: AWS::Lambda::Function
+    Properties:
+      Handler: index.handler
+      Runtime: python3.8
+      Timeout: 30
+      Role: !GetAtt S3PutLambdaRole.Arn
+      Code:
+        ZipFile: |
+          import boto3
+          import cfnresponse
+          import json
+          def handler(event, context):
+            try:
+              print(json.dumps(event))
+              if event['RequestType'] in ('Create', 'Update'):
+                client = boto3.client('s3')
+                content = event['ResourceProperties']['Content']
+                bucket = event['ResourceProperties']['Bucket']
+                key = event['ResourceProperties']['Key']
+                client.put_object(Bucket=bucket, Key=key, Body=content.encode())
+                cfnresponse.send(event, context, cfnresponse.SUCCESS, {})
+              else:
+                cfnresponse.send(event, context, cfnresponse.SUCCESS, None)
+            except Exception as e:
+              cfnresponse.send(event, context, cfnresponse.FAILED, {})
+              raise(e)
+
+  S3PutPermissions:
+    Type: Custom::S3Object
+    Properties:
+      ServiceToken: !GetAtt S3PutLambdaFunction.Arn
+      Bucket: !Ref Bucket
+      Key: config/website/permissions.yaml
+      Content: |
+        Profiles:
+          Admin:
+            Description: "Allow access to all DICOM instances stored in the Research PACS, and full access to the underlying Orthanc server"
+            OrthancPathPatterns:
+              Allow:
+                - ANY **
+          ReadOnly:
+            Description: "Allows access to all the DICOM instances stored in the Research PACS, and read-only access to the underlying Orthanc server"
+            OrthancPathPatterns:
+              Allow:
+                - ANY /app/**
+                - GET /system
+                - GET /patients
+                - GET /patients/**
+                - GET /series
+                - GET /series/**
+                - GET /studies
+                - GET /studies/**
+                - GET /instances
+                - GET /instances/**
+        Permissions:
+          - Groups: admin
+            Profiles: Admin
+          - Groups: readonly
+            Profiles: ReadOnly
+
+  S3PutDeIdentifier:
+    Type: Custom::S3Object
+    Condition: DeployAll
+    Properties:
+      ServiceToken: !GetAtt S3PutLambdaFunction.Arn
+      Bucket: !Ref Bucket
+      Key: config/de-identifier/config.yaml
+      Content: |
+        Labels: []
+        ScopeToForward:
+          Labels: ALL
+        Transformations:
+          - Scope:
+              Labels: ALL
+            RandomizeUID:
+              - TagPatterns:
+                  - "*/SOPInstanceUID"
+                  - "*/StudyInstanceUID"
+                  - "*/SeriesInstanceUID"
+
+  # SQS queues
+  SQSQueue1:
+    Type: AWS::SQS::Queue
+    Condition: DeployAll
+    Properties: 
+      KmsMasterKeyId: alias/aws/sqs
+      QueueName: !Sub ${AWS::StackName}-Queue1
+
+  SQSQueue2:
+    Type: AWS::SQS::Queue
+    Properties: 
+      KmsMasterKeyId: alias/aws/sqs
+      QueueName: !Sub ${AWS::StackName}-Queue2
+
+  # Log groups
+  LogGroupOrthanc1:
+    Type: AWS::Logs::LogGroup
+    Condition: DeployAll
+    Properties: 
+      RetentionInDays: 7
+      LogGroupName: !Sub /${AWS::StackName}/app-logs/Orthanc1
+
+  LogGroupChangePooler1:
+    Type: AWS::Logs::LogGroup
+    Condition: DeployAll
+    Properties: 
+      RetentionInDays: 7
+      LogGroupName: !Sub /${AWS::StackName}/app-logs/ChangePooler1
+
+  LogGroupDeIdentifier:
+    Type: AWS::Logs::LogGroup
+    Condition: DeployAll
+    Properties: 
+      RetentionInDays: 7
+      LogGroupName: !Sub /${AWS::StackName}/app-logs/DeIdentifier
+
+  LogGroupOrthanc2:
+    Type: AWS::Logs::LogGroup
+    Properties: 
+      RetentionInDays: 7
+      LogGroupName: !Sub /${AWS::StackName}/app-logs/Orthanc2
+
+  LogGroupChangePooler2:
+    Type: AWS::Logs::LogGroup
+    Properties: 
+      RetentionInDays: 7
+      LogGroupName: !Sub /${AWS::StackName}/app-logs/ChangePooler2
+
+  LogGroupWebsite:
+    Type: AWS::Logs::LogGroup
+    Properties: 
+      RetentionInDays: 7
+      LogGroupName: !Sub /${AWS::StackName}/app-logs/Website
+
+  LogGroupWebsiteWorker:
+    Type: AWS::Logs::LogGroup
+    Properties: 
+      RetentionInDays: 7
+      LogGroupName: !Sub /${AWS::StackName}/app-logs/WebsiteWorker
+
+  LogGroupAccessLogs:
+    Type: AWS::Logs::LogGroup
+    Properties: 
+      RetentionInDays: 30
+      LogGroupName: !Sub /${AWS::StackName}/access-logs
+
+  # Security groups
+  SGOrthanc1:
+    Type: AWS::EC2::SecurityGroup
+    Condition: DeployAll
+    Properties: 
+      GroupDescription: !Sub Research PACS on AWS - Orthanc 1 - ${AWS::StackName}
+      GroupName: !Sub ${AWS::StackName}-Orthanc1
+      VpcId: !Ref VPCID
+      SecurityGroupIngress: 
+        - CidrIp: !Ref OrthancSourceCIDR
+          FromPort: !Ref OrthancPort
+          IpProtocol: tcp
+          ToPort: !Ref OrthancPort
+        - CidrIp: !Ref OrthancSourceCIDR
+          FromPort: 4242
+          IpProtocol: tcp
+          ToPort: 4242
+        - FromPort: !Ref OrthancPort
+          IpProtocol: tcp
+          SourceSecurityGroupId: !Ref SGDeIdentifier
+          ToPort: !Ref OrthancPort
+        - CidrIp: !Ref VPCCIDR
+          FromPort: 8042
+          IpProtocol: tcp
+          ToPort: 8042
+
+  SGChangePooler1:
+    Type: AWS::EC2::SecurityGroup
+    Condition: DeployAll
+    Properties: 
+      GroupDescription: !Sub Research PACS on AWS - Change pooler 1 - ${AWS::StackName}
+      GroupName: !Sub ${AWS::StackName}-ChangePooler1
+      VpcId: !Ref VPCID
+
+  SGDeIdentifier:
+    Type: AWS::EC2::SecurityGroup
+    Properties: 
+      GroupDescription: !Sub Research PACS on AWS - De-identifier - ${AWS::StackName}
+      GroupName: !Sub ${AWS::StackName}-DeIdentifier
+      VpcId: !Ref VPCID
+
+  SGOrthanc2:
+    Type: AWS::EC2::SecurityGroup
+    Properties: 
+      GroupDescription: !Sub Research PACS on AWS - Orthanc 2 - ${AWS::StackName}
+      GroupName: !Sub ${AWS::StackName}-Orthanc2
+      VpcId: !Ref VPCID
+      SecurityGroupIngress:
+        - Fn::If:
+            - DeployAll
+            - FromPort: !Ref OrthancPort
+              IpProtocol: tcp
+              SourceSecurityGroupId: !Ref SGDeIdentifier
+              ToPort: !Ref OrthancPort
+            - CidrIp: !Ref OrthancSourceCIDR
+              FromPort: !Ref OrthancPort
+              IpProtocol: tcp
+              ToPort: !Ref OrthancPort
+        - Fn::If:
+            - DeployAll
+            - !Ref AWS::NoValue
+            - CidrIp: !Ref OrthancSourceCIDR
+              FromPort: 4242
+              IpProtocol: tcp
+              ToPort: 4242
+        - FromPort: !Ref OrthancPort
+          IpProtocol: tcp
+          SourceSecurityGroupId: !Ref SGChangePooler2
+          ToPort: !Ref OrthancPort
+        - FromPort: !Ref OrthancPort
+          IpProtocol: tcp
+          SourceSecurityGroupId: !Ref SGWebsite
+          ToPort: !Ref OrthancPort
+        - FromPort: !Ref OrthancPort
+          IpProtocol: tcp
+          SourceSecurityGroupId: !Ref SGWebsiteWorker
+          ToPort: !Ref OrthancPort
+        - CidrIp: !Ref VPCCIDR
+          FromPort: 8042
+          IpProtocol: tcp
+          ToPort: 8042
+
+  SGChangePooler2:
+    Type: AWS::EC2::SecurityGroup
+    Properties: 
+      GroupDescription: !Sub Research PACS on AWS - Change pooler 2 - ${AWS::StackName}
+      GroupName: !Sub ${AWS::StackName}-ChangePooler2
+      VpcId: !Ref VPCID
+
+  SGWebsite:
+    Type: AWS::EC2::SecurityGroup
+    Properties: 
+      GroupDescription: !Sub Research PACS on AWS - Website - ${AWS::StackName}
+      GroupName: !Sub ${AWS::StackName}-Website
+      VpcId: !Ref VPCID
+      SecurityGroupIngress: 
+        - FromPort: 8080
+          IpProtocol: tcp
+          SourceSecurityGroupId: !Ref SGALB
+          ToPort: 8080
+
+  SGWebsiteWorker:
+    Type: AWS::EC2::SecurityGroup
+    Properties: 
+      GroupDescription: !Sub Research PACS on AWS - Website worker - ${AWS::StackName}
+      GroupName: !Sub ${AWS::StackName}-WebsiteWorker
+      VpcId: !Ref VPCID
+
+  SGALB:
+    Type: AWS::EC2::SecurityGroup
+    Properties: 
+      GroupDescription: !Sub Research PACS on AWS - ALB - ${AWS::StackName}
+      GroupName: !Sub ${AWS::StackName}-ALB
+      VpcId: !Ref VPCID
+      SecurityGroupIngress: 
+        - CidrIp: !Ref ALBSourceCIDR
+          FromPort: 443
+          IpProtocol: tcp
+          ToPort: 443
+        - CidrIp: !Ref ALBSourceCIDR
+          FromPort: 80
+          IpProtocol: tcp
+          ToPort: 80
+
+  SGDB:
+    Type: AWS::EC2::SecurityGroup
+    Properties: 
+      GroupDescription: !Sub Research PACS on AWS - Database - ${AWS::StackName}
+      GroupName: !Sub ${AWS::StackName}-DB
+      VpcId: !Ref VPCID
+      SecurityGroupIngress:
+        - Fn::If:
+            - DeployAll
+            - FromPort: 5432
+              IpProtocol: tcp
+              SourceSecurityGroupId: !Ref SGChangePooler1
+              ToPort: 5432
+            - !Ref AWS::NoValue
+        - Fn::If:
+            - DeployAll
+            - FromPort: 5432
+              IpProtocol: tcp
+              SourceSecurityGroupId: !Ref SGDeIdentifier
+              ToPort: 5432
+            - !Ref AWS::NoValue
+        - FromPort: 5432
+          IpProtocol: tcp
+          SourceSecurityGroupId: !Ref SGOrthanc2
+          ToPort: 5432
+        - FromPort: 5432
+          IpProtocol: tcp
+          SourceSecurityGroupId: !Ref SGChangePooler2
+          ToPort: 5432
+        - FromPort: 5432
+          IpProtocol: tcp
+          SourceSecurityGroupId: !Ref SGWebsite
+          ToPort: 5432
+        - FromPort: 5432
+          IpProtocol: tcp
+          SourceSecurityGroupId: !Ref SGWebsiteWorker
+          ToPort: 5432
+
+  # Secrets
+  SecretDB:
+    Type: AWS::SecretsManager::Secret
+    Properties: 
+      Description: Research PACS on AWS - Database
+      GenerateSecretString:
+        ExcludePunctuation: true
+        IncludeSpace: false
+        PasswordLength: 20
+      Name: !Sub ${AWS::StackName}-DB
+      
+  SecretOrthanc1:
+    Type: AWS::SecretsManager::Secret
+    Condition: DeployAll
+    Properties: 
+      Description: Research PACS on AWS - Orthanc 1
+      GenerateSecretString:
+        ExcludePunctuation: true
+        IncludeSpace: false
+        PasswordLength: 20
+      Name: !Sub ${AWS::StackName}-Orthanc1
+
+  SecretOrthanc1Full:
+    Type: AWS::SecretsManager::Secret
+    Condition: DeployAll
+    Properties: 
+      Description: Research PACS on AWS - Orthanc 1 Full
+      SecretString: !Sub '{"awsuser": "{{resolve:secretsmanager:${SecretOrthanc1}:SecretString}}"}'
+      Name: !Sub ${AWS::StackName}-Orthanc1Full
+
+  SecretOrthanc2:
+    Type: AWS::SecretsManager::Secret
+    Properties: 
+      Description: Research PACS on AWS - Orthanc 2
+      GenerateSecretString:
+        ExcludePunctuation: true
+        IncludeSpace: false
+        PasswordLength: 20
+      Name: !Sub ${AWS::StackName}-Orthanc2
+
+  SecretOrthanc2Full:
+    Type: AWS::SecretsManager::Secret
+    Properties: 
+      Description: Research PACS on AWS - Orthanc 2 Full
+      SecretString: !Sub '{"awsuser": "{{resolve:secretsmanager:${SecretOrthanc2}:SecretString}}"}'
+      Name: !Sub ${AWS::StackName}-Orthanc2Full
+      
+  # Database
+  DBSubnetGroup:
+    Type: AWS::RDS::DBSubnetGroup
+    Properties: 
+      DBSubnetGroupDescription: Research PACS on AWS - DB Subnet Group
+      SubnetIds: !Ref PrivateSubnetIDs
+
+  DBCluster:
+    Type: AWS::RDS::DBCluster
+    DeletionPolicy: Snapshot
+    Properties: 
+      BackupRetentionPeriod: 14
+      DatabaseName: orthanc
+      DBSubnetGroupName: !Ref DBSubnetGroup
+      Engine: aurora-postgresql
+      EngineMode: provisioned
+      EngineVersion: "12.7"
+      MasterUsername: awsuser
+      MasterUserPassword: !Sub '{{resolve:secretsmanager:${SecretDB}:SecretString}}'
+      Port: 5432
+      StorageEncrypted: true
+      VpcSecurityGroupIds: 
+        - !Ref SGDB
+
+  DBInstancePrimary:
+    Type: AWS::RDS::DBInstance
+    Properties:
+      Engine: aurora-postgresql
+      DBClusterIdentifier: !Ref DBCluster
+      DBInstanceClass: !Ref DBInstanceType
+      
+  DBInstanceFailover:
+    Type: AWS::RDS::DBInstance
+    Condition: IsDBMultiAZ
+    DependsOn:
+      - DBInstancePrimary
+    Properties:
+      Engine: aurora-postgresql
+      DBClusterIdentifier: !Ref DBCluster
+      DBInstanceClass: !Ref DBInstanceType
+
+  # Application load balancer
+  ALB:
+    Type: AWS::ElasticLoadBalancingV2::LoadBalancer
+    Properties:
+      Name: !Sub ${AWS::StackName}-alb
+      Scheme: !If
+        - IsALBPublic
+        - internet-facing
+        - internal
+      SecurityGroups: 
+        - !Ref SGALB
+      Subnets: !Ref ALBSubnetIDs
+      Type: application
+
+  ALBListenerHTTP:
+    Type: AWS::ElasticLoadBalancingV2::Listener
+    Properties: 
+      DefaultActions: 
+        - RedirectConfig:
+            Protocol: HTTPS
+            Port: 443
+            Host: "#{host}"
+            Path: "/#{path}"
+            Query: "#{query}"
+            StatusCode: HTTP_301
+          Type: redirect
+      LoadBalancerArn: !Ref ALB
+      Port: 80
+      Protocol: HTTP
+
+  ALBListenerHTTPS:
+    Type: AWS::ElasticLoadBalancingV2::Listener
+    Properties: 
+      Certificates:
+        - CertificateArn: !If
+            - UseSelfSignedCertificate
+            - !Select [3, !Split ['"', !GetAtt BuildProjectCertificateWait.Data]]
+            - !Ref ALBCertificateArn
+      DefaultActions:
+        - AuthenticateCognitoConfig: 
+            Scope: openid
+            SessionTimeout: 86400
+            UserPoolArn: !GetAtt CognitoUserPool.Arn
+            UserPoolClientId: !Ref CognitoClient
+            UserPoolDomain: !Ref CognitoUserPoolDomain
+          Order: 1
+          Type: authenticate-cognito
+        - TargetGroupArn: !Ref ALBTargetGroup
+          Order: 2
+          Type: forward
+      LoadBalancerArn: !Ref ALB
+      Port: 443
+      Protocol: HTTPS
+
+  ALBTargetGroup:
+    Type: AWS::ElasticLoadBalancingV2::TargetGroup
+    Properties: 
+      HealthCheckIntervalSeconds: 10
+      HealthCheckPath: /healthcheck
+      HealthyThresholdCount: 3
+      Port: 8080
+      Protocol: HTTP
+      TargetGroupAttributes:
+        - Key: deregistration_delay.timeout_seconds
+          Value: 30
+      TargetType: ip
+      UnhealthyThresholdCount: 3
+      VpcId: !Ref VPCID
+
+  # Network load balancers
+  NLBOrthanc1:
+    Type: AWS::ElasticLoadBalancingV2::LoadBalancer
+    Condition: DeployAll
+    Properties:
+      Scheme: !If
+        - IsNLB1Public
+        - internet-facing
+        - internal
+      Subnets: !Ref OrthancSubnetIDs
+      Type: network
+
+  NLBOrthanc1ListenerHTTP:
+    Type: AWS::ElasticLoadBalancingV2::Listener
+    Condition: DeployAll
+    Properties:
+      DefaultActions:
+        - ForwardConfig:
+            TargetGroups:
+              - TargetGroupArn: !Ref NLBOrthanc1TargetGroupHTTP
+          Type: forward
+      LoadBalancerArn: !Ref NLBOrthanc1
+      Port: !Ref OrthancPort
+      Protocol: TCP
+
+  NLBOrthanc1ListenerDICOM:
+    Type: AWS::ElasticLoadBalancingV2::Listener
+    Condition: DeployAll
+    Properties:
+      DefaultActions:
+        - ForwardConfig:
+            TargetGroups:
+              - TargetGroupArn: !Ref NLBOrthanc1TargetGroupDICOM
+          Type: forward
+      LoadBalancerArn: !Ref NLBOrthanc1
+      Port: 4242
+      Protocol: TCP
+
+  NLBOrthanc1TargetGroupHTTP:
+    Type: AWS::ElasticLoadBalancingV2::TargetGroup
+    Condition: DeployAll
+    Properties: 
+      HealthCheckIntervalSeconds: 10
+      HealthCheckPort: 8042
+      HealthCheckProtocol: TCP
+      HealthyThresholdCount: 3
+      Port: 8042
+      Protocol: TCP
+      TargetGroupAttributes: 
+        - Key: deregistration_delay.timeout_seconds
+          Value: 30
+        - Key: preserve_client_ip.enabled
+          Value: true
+      TargetType: ip
+      UnhealthyThresholdCount: 3
+      VpcId: !Ref VPCID
+
+  NLBOrthanc1TargetGroupDICOM:
+    Type: AWS::ElasticLoadBalancingV2::TargetGroup
+    Condition: DeployAll
+    Properties: 
+      HealthCheckIntervalSeconds: 10
+      HealthCheckPort: 8042
+      HealthCheckProtocol: TCP
+      HealthyThresholdCount: 3
+      Port: 4242
+      Protocol: TCP
+      TargetGroupAttributes: 
+        - Key: deregistration_delay.timeout_seconds
+          Value: 30
+        - Key: preserve_client_ip.enabled
+          Value: true
+      TargetType: ip
+      UnhealthyThresholdCount: 3
+      VpcId: !Ref VPCID
+
+  NLBOrthanc2:
+    Type: AWS::ElasticLoadBalancingV2::LoadBalancer
+    Properties:
+      Scheme: !If
+        - IsNLB2Public
+        - internet-facing
+        - internal
+      Subnets: !If
+        - DeployAll
+        - !Ref PrivateSubnetIDs
+        - !Ref OrthancSubnetIDs
+      Type: network
+
+  NLBOrthanc2ListenerHTTP:
+    Type: AWS::ElasticLoadBalancingV2::Listener
+    Properties:
+      DefaultActions:
+        - ForwardConfig:
+            TargetGroups:
+              - TargetGroupArn: !Ref NLBOrthanc2TargetGroupHTTP
+          Type: forward
+      LoadBalancerArn: !Ref NLBOrthanc2
+      Port: !Ref OrthancPort
+      Protocol: TCP
+
+  NLBOrthanc2ListenerDICOM:
+    Type: AWS::ElasticLoadBalancingV2::Listener
+    Condition: NotDeployAll
+    Properties:
+      DefaultActions:
+        - ForwardConfig:
+            TargetGroups:
+              - TargetGroupArn: !Ref NLBOrthanc2TargetGroupDICOM
+          Type: forward
+      LoadBalancerArn: !Ref NLBOrthanc2
+      Port: 4242
+      Protocol: TCP
+
+  NLBOrthanc2TargetGroupHTTP:
+    Type: AWS::ElasticLoadBalancingV2::TargetGroup
+    Properties: 
+      HealthCheckIntervalSeconds: 10
+      HealthCheckPort: 8042
+      HealthCheckProtocol: TCP
+      HealthyThresholdCount: 3
+      Port: 8042
+      Protocol: TCP
+      TargetGroupAttributes: 
+        - Key: deregistration_delay.timeout_seconds
+          Value: 30
+        - Key: preserve_client_ip.enabled
+          Value: true
+      TargetType: ip
+      UnhealthyThresholdCount: 3
+      VpcId: !Ref VPCID
+
+  NLBOrthanc2TargetGroupDICOM:
+    Type: AWS::ElasticLoadBalancingV2::TargetGroup
+    Condition: NotDeployAll
+    Properties: 
+      HealthCheckIntervalSeconds: 10
+      HealthCheckPort: 8042
+      HealthCheckProtocol: TCP
+      HealthyThresholdCount: 3
+      Port: 4242
+      Protocol: TCP
+      TargetGroupAttributes: 
+        - Key: deregistration_delay.timeout_seconds
+          Value: 30
+        - Key: preserve_client_ip.enabled
+          Value: true
+      TargetType: ip
+      UnhealthyThresholdCount: 3
+      VpcId: !Ref VPCID
+
+  # Cognito user pool
+  CognitoUserPool:
+    Type: AWS::Cognito::UserPool
+    Properties:
+      AccountRecoverySetting:
+        RecoveryMechanisms: 
+          - Name: verified_email
+            Priority: 1
+          - Name: verified_phone_number
+            Priority: 2
+      AutoVerifiedAttributes:
+        - email
+      MfaConfiguration: OPTIONAL
+      EnabledMfas:
+        - SOFTWARE_TOKEN_MFA
+      UserPoolName: !Sub ${AWS::StackName}-UserPool
+
+  CognitoUserPoolDomain:
+    Type: AWS::Cognito::UserPoolDomain
+    Properties: 
+      Domain: !Ref CognitoDomain
+      UserPoolId: !Ref CognitoUserPool
+
+  CognitoClient:
+    Type: AWS::Cognito::UserPoolClient
+    Properties: 
+      AllowedOAuthFlows: 
+        - code
+      AllowedOAuthFlowsUserPoolClient: true
+      AllowedOAuthScopes: 
+        - openid
+      CallbackURLs: 
+        - !Sub https://${ALB.DNSName}/oauth2/idpresponse
+      ClientName: website
+      GenerateSecret: true
+      LogoutURLs: 
+        - !Sub https://${ALB.DNSName}/
+      SupportedIdentityProviders:
+        - COGNITO
+      UserPoolId: !Ref CognitoUserPool
+
+  CognitoGroupAdmin:
+    Type: AWS::Cognito::UserPoolGroup
+    Properties: 
+      Description: Provide full access to the Research PACS
+      GroupName: admin
+      UserPoolId: !Ref CognitoUserPool
+
+  CognitoGroupReadOnly:
+    Type: AWS::Cognito::UserPoolGroup
+    Properties: 
+      Description: Provide read-only access to the Research PACS
+      GroupName: readonly
+      UserPoolId: !Ref CognitoUserPool
+  
+  CognitoAdminUser:
+    Type: AWS::Cognito::UserPoolUser
+    Properties: 
+      UserAttributes: 
+        - Name: email
+          Value: !Ref AdminUserEmail
+      Username: !Ref AdminUserName
+      UserPoolId: !Ref CognitoUserPool
+      
+  CognitoUserToGroup:
+    Type: AWS::Cognito::UserPoolUserToGroupAttachment
+    Properties: 
+      GroupName: admin
+      Username: !Ref CognitoAdminUser
+      UserPoolId: !Ref CognitoUserPool
+
+  # ECR repositories
+  RepositoryOrthanc:
+    Type: AWS::ECR::Repository
+    Properties: 
+      EncryptionConfiguration: 
+        EncryptionType: KMS
+      ImageScanningConfiguration:
+        ScanOnPush: true
+      RepositoryName: !Sub ${AWS::StackName}/orthanc
+
+  RepositoryChangePooler:
+    Type: AWS::ECR::Repository
+    Properties: 
+      EncryptionConfiguration: 
+        EncryptionType: KMS
+      ImageScanningConfiguration:
+        ScanOnPush: true
+      RepositoryName: !Sub ${AWS::StackName}/change-pooler
+
+  RepositoryDeIdentifier:
+    Type: AWS::ECR::Repository
+    Properties: 
+      EncryptionConfiguration: 
+        EncryptionType: KMS
+      ImageScanningConfiguration:
+        ScanOnPush: true
+      RepositoryName: !Sub ${AWS::StackName}/de-identifier
+
+  RepositoryWebsite:
+    Type: AWS::ECR::Repository
+    Properties: 
+      EncryptionConfiguration: 
+        EncryptionType: KMS
+      ImageScanningConfiguration:
+        ScanOnPush: true
+      RepositoryName: !Sub ${AWS::StackName}/website
+
+  RepositoryWebsiteWorker:
+    Type: AWS::ECR::Repository
+    Properties: 
+      EncryptionConfiguration: 
+        EncryptionType: KMS
+      ImageScanningConfiguration:
+        ScanOnPush: true
+      RepositoryName: !Sub ${AWS::StackName}/website-worker
+
+  # CodeBuild
+  BuildLambdaFunctionRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: 2012-10-17
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: lambda.amazonaws.com
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
+      Policies:
+        - PolicyName: main
+          PolicyDocument:
+            Version: 2012-10-17
+            Statement:
+              - Effect: Allow
+                Action:
+                  - codebuild:StartBuild
+                  - codebuild:BatchGetBuilds
+                Resource: "*"
+
+  BuildLambdaFunction:
+    Type: AWS::Lambda::Function
+    Properties:
+      Handler: index.handler
+      Role: !GetAtt BuildLambdaFunctionRole.Arn
+      Runtime: python3.8
+      MemorySize: 128
+      Timeout: 900
+      Code:
+        ZipFile: |
+          import boto3
+          import cfnresponse
+          import json
+          import time
+          def handler(event, context):
+            print(json.dumps(event))
+            try:
+              if event['RequestType'] in ("Create", "Update"):
+                # Start a new build
+                codebuild = boto3.client("codebuild")
+                build = codebuild.start_build(projectName=event["ResourceProperties"]["ProjectName"])['build']
+                id = build['id']
+                while True:
+                  # Wait until the build is completed
+                  time.sleep(10)
+                  build = codebuild.batch_get_builds(ids=[id])['builds'][0]
+                  status = build['buildStatus']
+                  if status == "SUCCEEDED":
+                    cfnresponse.send(event, context, cfnresponse.SUCCESS, {})
+                  elif status != "IN_PROGRESS":
+                    cfnresponse.send(event, context, cfnresponse.FAILED, None)
+              else:
+                cfnresponse.send(event, context, cfnresponse.SUCCESS, None)
+            except Exception as e:
+              cfnresponse.send(event, context, cfnresponse.FAILED, {})
+              raise(e)
+
+  BuildRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: 2012-10-17
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: codebuild.amazonaws.com
+            Action: sts:AssumeRole
+      Policies:
+        - PolicyName: main
+          PolicyDocument:
+            Version: 2012-10-17
+            Statement:
+              - Effect: Allow
+                Action: ecr:GetAuthorizationToken
+                Resource: "*"
+              - Effect: Allow
+                Action:
+                  - ecr:BatchCheckLayerAvailability
+                  - ecr:GetAuthorizationToken
+                  - ecr:InitiateLayerUpload
+                  - ecr:UploadLayerPart
+                  - ecr:CompleteLayerUpload
+                  - ecr:PutImage
+                Resource: !Sub arn:aws:ecr:${AWS::Region}:${AWS::AccountId}:repository/${AWS::StackName}/*
+              - Effect: Allow
+                Action:
+                  - logs:CreateLogGroup
+                  - logs:CreateLogStream
+                  - logs:PutLogEvents
+                Resource: !Sub arn:aws:logs:${AWS::Region}:${AWS::AccountId}:log-group:/aws/codebuild/*
+              - Effect: Allow
+                Action: acm:ImportCertificate
+                Resource: "*"
+
+  BuildProjectCertificate:
+    Type: AWS::CodeBuild::Project
+    Condition: UseSelfSignedCertificate
+    Properties:
+      Artifacts:
+        Type: NO_ARTIFACTS
+      Environment:
+        ComputeType: BUILD_GENERAL1_SMALL
+        EnvironmentVariables:
+          - Name: PRESIGNED_URL
+            Type: PLAINTEXT
+            Value: !Ref BuildProjectCertificateWaitHandle
+        Image: aws/codebuild/amazonlinux2-x86_64-standard:3.0
+        Type: LINUX_CONTAINER
+      Name: !Sub ${AWS::StackName}-Certificate
+      ServiceRole: !GetAtt BuildRole.Arn
+      TimeoutInMinutes: 5
+      Source:
+        Type: NO_SOURCE
+        BuildSpec: !Sub |
+          version: 0.2
+          phases:
+            pre_build:
+              commands:
+                - yum install -y openssl
+            build:
+              commands:
+                - openssl req -new -newkey rsa:4096 -days 3650 -nodes -x509 -subj "/CN=rpacs.local" -keyout rpacs.key -out rpacs.cert
+                - ARN=`aws acm import-certificate --certificate fileb://rpacs.cert --private-key fileb://rpacs.key --query CertificateArn --output text`
+                - curl -X PUT -H 'Content-Type:' --data-binary "{\"Status\":\"SUCCESS\",\"Data\":\"$ARN\",\"UniqueId\":\"Certificate\"}" "$PRESIGNED_URL"
+
+  BuildProjectCertificateStart:
+    Type: Custom::BuildCustomResource
+    Condition: UseSelfSignedCertificate
+    Properties:
+      ServiceToken: !GetAtt BuildLambdaFunction.Arn
+      ProjectName: !Ref BuildProjectCertificate
+
+  BuildProjectCertificateWaitHandle:
+    Condition: UseSelfSignedCertificate
+    Type: AWS::CloudFormation::WaitConditionHandle
+
+  BuildProjectCertificateWait:
+    Type: AWS::CloudFormation::WaitCondition
+    Condition: UseSelfSignedCertificate
+    DependsOn:
+      - BuildProjectCertificateStart
+    Properties:
+      Handle: !Ref BuildProjectCertificateWaitHandle
+      Timeout: 30
+
+  BuildProjectChangePooler:
+    Type: AWS::CodeBuild::Project
+    Properties:
+      Artifacts:
+        Type: NO_ARTIFACTS
+      Environment:
+        ComputeType: BUILD_GENERAL1_SMALL
+        Image: aws/codebuild/amazonlinux2-x86_64-standard:3.0
+        PrivilegedMode: true
+        Type: LINUX_CONTAINER
+      Name: !Sub ${AWS::StackName}-ChangePooler
+      ServiceRole: !GetAtt BuildRole.Arn
+      TimeoutInMinutes: 10
+      Source:
+        Type: NO_SOURCE
+        BuildSpec: !Sub |
+          version: 0.2
+          phases:
+            pre_build:
+              commands:
+                - echo Logging in to Amazon ECR...
+                - aws ecr get-login-password --region ${AWS::Region} | docker login --username AWS --password-stdin ${AWS::AccountId}.dkr.ecr.${AWS::Region}.amazonaws.com
+            build:
+              commands:
+                - echo Building the Docker image...
+                - wget -O Dockerfile ${GitHubRepoURL}/raw/${GitHubRepoBranch}/dockerfile/change-pooler.Dockerfile
+                - docker build --build-arg REPO_URL="${GitHubRepoURL}" --build-arg REPO_BRANCH="${GitHubRepoBranch}" -t ${RepositoryChangePooler}:latest .
+            post_build:
+              commands:
+                - CURRENT_DT=$(date +%Y%m%d-%H%M%S)
+                - echo Pushing the Docker image...
+                - docker tag ${RepositoryChangePooler}:latest ${AWS::AccountId}.dkr.ecr.${AWS::Region}.amazonaws.com/${RepositoryChangePooler}:latest
+                - docker tag ${RepositoryChangePooler}:latest ${AWS::AccountId}.dkr.ecr.${AWS::Region}.amazonaws.com/${RepositoryChangePooler}:$CURRENT_DT
+                - docker push ${AWS::AccountId}.dkr.ecr.${AWS::Region}.amazonaws.com/${RepositoryChangePooler}
+
+  BuildProjectChangePoolerStart:
+    Type: Custom::BuildCustomResource
+    DependsOn:
+      - BuildProjectCertificateStart
+    Properties:
+      ServiceToken: !GetAtt BuildLambdaFunction.Arn
+      ProjectName: !Ref BuildProjectChangePooler
+
+  BuildProjectDeIdentifier:
+    Type: AWS::CodeBuild::Project
+    Properties:
+      Artifacts:
+        Type: NO_ARTIFACTS
+      Environment:
+        ComputeType: BUILD_GENERAL1_SMALL
+        Image: aws/codebuild/amazonlinux2-x86_64-standard:3.0
+        PrivilegedMode: true
+        Type: LINUX_CONTAINER
+      Name: !Sub ${AWS::StackName}-DeIdentifier
+      ServiceRole: !GetAtt BuildRole.Arn
+      TimeoutInMinutes: 10
+      Source:
+        Type: NO_SOURCE
+        BuildSpec: !Sub |
+          version: 0.2
+          phases:
+            pre_build:
+              commands:
+                - echo Logging in to Amazon ECR...
+                - aws ecr get-login-password --region ${AWS::Region} | docker login --username AWS --password-stdin ${AWS::AccountId}.dkr.ecr.${AWS::Region}.amazonaws.com
+            build:
+              commands:
+                - echo Building the Docker image...
+                - wget -O Dockerfile ${GitHubRepoURL}/raw/${GitHubRepoBranch}/dockerfile/de-identifier.Dockerfile
+                - docker build --build-arg REPO_URL="${GitHubRepoURL}" --build-arg REPO_BRANCH="${GitHubRepoBranch}" -t ${RepositoryDeIdentifier}:latest .
+            post_build:
+              commands:
+                - CURRENT_DT=$(date +%Y%m%d-%H%M%S)
+                - echo Pushing the Docker image...
+                - docker tag ${RepositoryDeIdentifier}:latest ${AWS::AccountId}.dkr.ecr.${AWS::Region}.amazonaws.com/${RepositoryDeIdentifier}:latest
+                - docker tag ${RepositoryDeIdentifier}:latest ${AWS::AccountId}.dkr.ecr.${AWS::Region}.amazonaws.com/${RepositoryDeIdentifier}:$CURRENT_DT
+                - docker push ${AWS::AccountId}.dkr.ecr.${AWS::Region}.amazonaws.com/${RepositoryDeIdentifier}
+
+  BuildProjectDeIdentifierStart:
+    Type: Custom::BuildCustomResource
+    DependsOn:
+      - BuildProjectChangePoolerStart
+    Properties:
+      ServiceToken: !GetAtt BuildLambdaFunction.Arn
+      ProjectName: !Ref BuildProjectDeIdentifier
+
+  BuildProjectWebsite:
+    Type: AWS::CodeBuild::Project
+    Properties:
+      Artifacts:
+        Type: NO_ARTIFACTS
+      Environment:
+        ComputeType: BUILD_GENERAL1_SMALL
+        Image: aws/codebuild/amazonlinux2-x86_64-standard:3.0
+        PrivilegedMode: true
+        Type: LINUX_CONTAINER
+      Name: !Sub ${AWS::StackName}-Website
+      ServiceRole: !GetAtt BuildRole.Arn
+      TimeoutInMinutes: 10
+      Source:
+        Type: NO_SOURCE
+        BuildSpec: !Sub |
+          version: 0.2
+          phases:
+            pre_build:
+              commands:
+                - echo Logging in to Amazon ECR...
+                - aws ecr get-login-password --region ${AWS::Region} | docker login --username AWS --password-stdin ${AWS::AccountId}.dkr.ecr.${AWS::Region}.amazonaws.com
+            build:
+              commands:
+                - echo Building the Docker image...
+                - wget -O Dockerfile ${GitHubRepoURL}/raw/${GitHubRepoBranch}/dockerfile/website.Dockerfile
+                - docker build --build-arg REPO_URL="${GitHubRepoURL}" --build-arg REPO_BRANCH="${GitHubRepoBranch}" -t ${RepositoryWebsite}:latest .
+            post_build:
+              commands:
+                - CURRENT_DT=$(date +%Y%m%d-%H%M%S)
+                - echo Pushing the Docker image...
+                - docker tag ${RepositoryWebsite}:latest ${AWS::AccountId}.dkr.ecr.${AWS::Region}.amazonaws.com/${RepositoryWebsite}:latest
+                - docker tag ${RepositoryWebsite}:latest ${AWS::AccountId}.dkr.ecr.${AWS::Region}.amazonaws.com/${RepositoryWebsite}:$CURRENT_DT
+                - docker push ${AWS::AccountId}.dkr.ecr.${AWS::Region}.amazonaws.com/${RepositoryWebsite}
+
+  BuildProjectWebsiteStart:
+    Type: Custom::BuildCustomResource
+    DependsOn:
+      - BuildProjectDeIdentifierStart
+    Properties:
+      ServiceToken: !GetAtt BuildLambdaFunction.Arn
+      ProjectName: !Ref BuildProjectWebsite
+
+  BuildProjectWebsiteWorker:
+    Type: AWS::CodeBuild::Project
+    Properties:
+      Artifacts:
+        Type: NO_ARTIFACTS
+      Environment:
+        ComputeType: BUILD_GENERAL1_SMALL
+        Image: aws/codebuild/amazonlinux2-x86_64-standard:3.0
+        PrivilegedMode: true
+        Type: LINUX_CONTAINER
+      Name: !Sub ${AWS::StackName}-WebsiteWorker
+      ServiceRole: !GetAtt BuildRole.Arn
+      TimeoutInMinutes: 10
+      Source:
+        Type: NO_SOURCE
+        BuildSpec: !Sub |
+          version: 0.2
+          phases:
+            pre_build:
+              commands:
+                - echo Logging in to Amazon ECR...
+                - aws ecr get-login-password --region ${AWS::Region} | docker login --username AWS --password-stdin ${AWS::AccountId}.dkr.ecr.${AWS::Region}.amazonaws.com
+            build:
+              commands:
+                - echo Building the Docker image...
+                - wget -O Dockerfile ${GitHubRepoURL}/raw/${GitHubRepoBranch}/dockerfile/website-worker.Dockerfile
+                - docker build --build-arg REPO_URL="${GitHubRepoURL}" --build-arg REPO_BRANCH="${GitHubRepoBranch}" -t ${RepositoryWebsiteWorker}:latest .
+            post_build:
+              commands:
+                - CURRENT_DT=$(date +%Y%m%d-%H%M%S)
+                - echo Pushing the Docker image...
+                - docker tag ${RepositoryWebsiteWorker}:latest ${AWS::AccountId}.dkr.ecr.${AWS::Region}.amazonaws.com/${RepositoryWebsiteWorker}:latest
+                - docker tag ${RepositoryWebsiteWorker}:latest ${AWS::AccountId}.dkr.ecr.${AWS::Region}.amazonaws.com/${RepositoryWebsiteWorker}:$CURRENT_DT
+                - docker push ${AWS::AccountId}.dkr.ecr.${AWS::Region}.amazonaws.com/${RepositoryWebsiteWorker}
+
+  BuildProjectWebsiteWorkerStart:
+    Type: Custom::BuildCustomResource
+    DependsOn:
+      - BuildProjectWebsiteStart
+    Properties:
+      ServiceToken: !GetAtt BuildLambdaFunction.Arn
+      ProjectName: !Ref BuildProjectWebsiteWorker
+
+  BuildProjectOrthanc:
+    Type: AWS::CodeBuild::Project
+    Properties:
+      Artifacts:
+        Type: NO_ARTIFACTS
+      Environment:
+        ComputeType: BUILD_GENERAL1_LARGE
+        Image: aws/codebuild/amazonlinux2-x86_64-standard:3.0
+        PrivilegedMode: true
+        Type: LINUX_CONTAINER
+      Name: !Sub ${AWS::StackName}-Orthanc
+      ServiceRole: !GetAtt BuildRole.Arn
+      TimeoutInMinutes: 14
+      Source:
+        Type: NO_SOURCE
+        BuildSpec: !Sub |
+          version: 0.2
+          phases:
+            pre_build:
+              commands:
+                - echo Logging in to Amazon ECR...
+                - aws ecr get-login-password --region ${AWS::Region} | docker login --username AWS --password-stdin ${AWS::AccountId}.dkr.ecr.${AWS::Region}.amazonaws.com
+            build:
+              commands:
+                - echo Building the Docker image...
+                - wget -O Dockerfile ${GitHubRepoURL}/raw/${GitHubRepoBranch}/dockerfile/orthanc.Dockerfile
+                - docker build --build-arg REPO_URL="${GitHubRepoURL}" --build-arg REPO_BRANCH="${GitHubRepoBranch}" --build-arg ORTHANC_VERSION="${OrthancDockerVersion}" --build-arg S3_PLUGIN_BRANCH="${S3PluginBranch}" -t ${RepositoryOrthanc}:latest .
+            post_build:
+              commands:
+                - CURRENT_DT=$(date +%Y%m%d-%H%M%S)
+                - echo Pushing the Docker image...
+                - docker tag ${RepositoryOrthanc}:latest ${AWS::AccountId}.dkr.ecr.${AWS::Region}.amazonaws.com/${RepositoryOrthanc}:latest
+                - docker tag ${RepositoryOrthanc}:latest ${AWS::AccountId}.dkr.ecr.${AWS::Region}.amazonaws.com/${RepositoryOrthanc}:$CURRENT_DT
+                - docker push ${AWS::AccountId}.dkr.ecr.${AWS::Region}.amazonaws.com/${RepositoryOrthanc}
+
+  BuildProjectOrthancStart:
+    Type: Custom::BuildCustomResource
+    DependsOn:
+      - BuildProjectWebsiteWorkerStart
+    Properties:
+      ServiceToken: !GetAtt BuildLambdaFunction.Arn
+      ProjectName: !Ref BuildProjectOrthanc
+
+  # ECS
+  Cluster:
+    Type: AWS::ECS::Cluster
+
+  TaskExecutionRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Action:
+              - sts:AssumeRole
+            Effect: Allow
+            Principal:
+              Service: ecs-tasks.amazonaws.com
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/service-role/AmazonECSTaskExecutionRolePolicy
+        - arn:aws:iam::aws:policy/AmazonEC2ContainerRegistryReadOnly
+      Policies:
+        - PolicyName: main
+          PolicyDocument:
+            Version: 2012-10-17
+            Statement:
+              - Effect: Allow
+                Action: ssm:GetParameters
+                Resource:
+                  - !Sub arn:aws:ssm:${AWS::Region}:${AWS::AccountId}:parameter/${WebsiteCWAgentConfig}
+                  - !If
+                      - DeployAll
+                      - !Sub arn:aws:ssm:${AWS::Region}:${AWS::AccountId}:parameter/${Orthanc1Config}
+                      - !Ref AWS::NoValue
+                  - !Sub arn:aws:ssm:${AWS::Region}:${AWS::AccountId}:parameter/${Orthanc2Config}
+              - Effect: Allow
+                Action: secretsmanager:GetSecretValue
+                Resource:
+                  - !Ref SecretDB
+                  - !If
+                      - DeployAll
+                      - !Ref SecretOrthanc1
+                      - !Ref AWS::NoValue
+                  - !If
+                      - DeployAll
+                      - !Ref SecretOrthanc1Full
+                      - !Ref AWS::NoValue
+                  - !Ref SecretOrthanc2
+                  - !Ref SecretOrthanc2Full
+
+  Orthanc1Config:
+    Type: AWS::SSM::Parameter
+    Condition: DeployAll
+    Properties: 
+      Type: String
+      Value: !Sub |
+        {
+          "Name": "${AWS::StackName}-Orthanc1",
+          "OverwriteInstances": true
+        }
+
+  Orthanc1TaskRole:
+    Type: AWS::IAM::Role
+    Condition: DeployAll
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Action:
+              - sts:AssumeRole
+            Effect: Allow
+            Principal:
+              Service: ecs-tasks.amazonaws.com
+      Policies:
+        - PolicyName: main
+          PolicyDocument:
+            Version: 2012-10-17
+            Statement:
+              - Effect: Allow
+                Action: s3:ListBucket
+                Resource: !GetAtt Bucket.Arn
+              - Effect: Allow
+                Action: s3:GetObject
+                Resource: !Sub ${Bucket.Arn}/config/orthanc1/*
+
+  Orthanc1TaskDef:
+    Type: AWS::ECS::TaskDefinition
+    Condition: DeployAll
+    DependsOn:
+      - BuildProjectOrthancStart
+    Properties: 
+      ContainerDefinitions: 
+        - Environment:
+            - Name: RPACS_S3_CONFIG_BUCKET_NAME
+              Value: !Ref Bucket
+            - Name: RPACS_S3_CONFIG_AWS_REGION
+              Value: !Ref AWS::Region
+            - Name: RPACS_S3_CONFIG_KEY_PREFIX
+              Value: config/orthanc1/
+          Essential: true
+          Image: !Sub '${RepositoryOrthanc.RepositoryUri}:latest'
+          LogConfiguration:
+            LogDriver: awslogs
+            Options:
+              awslogs-group: !Ref LogGroupOrthanc1
+              awslogs-region: !Ref AWS::Region
+              awslogs-stream-prefix: main
+          Name: main
+          PortMappings:
+            - ContainerPort: 8042
+              HostPort: 8042
+              Protocol: tcp
+            - ContainerPort: 4242
+              HostPort: 4242
+              Protocol: tcp
+          Secrets:
+            - Name: ORTHANC__REGISTERED_USERS
+              ValueFrom: !Ref SecretOrthanc1Full
+            - Name: ORTHANC_JSON
+              ValueFrom: !Sub arn:aws:ssm:${AWS::Region}:${AWS::AccountId}:parameter/${Orthanc1Config}
+      Cpu: 1024
+      ExecutionRoleArn: !Ref TaskExecutionRole
+      Memory: 4096
+      NetworkMode: awsvpc
+      RequiresCompatibilities: 
+        - FARGATE
+      TaskRoleArn: !Ref Orthanc1TaskRole
+
+  Orthanc1Service:
+    Type: AWS::ECS::Service
+    Condition: DeployAll
+    DependsOn:
+      - DBInstancePrimary
+    Properties: 
+      Cluster: !Ref Cluster
+      DeploymentConfiguration: 
+        MaximumPercent: 100
+        MinimumHealthyPercent: 0
+      DeploymentController: 
+        Type: ECS
+      DesiredCount: 1
+      LaunchType: FARGATE
+      LoadBalancers:
+        - ContainerName: main
+          ContainerPort: 8042
+          TargetGroupArn: !Ref NLBOrthanc1TargetGroupHTTP
+        - ContainerName: main
+          ContainerPort: 4242
+          TargetGroupArn: !Ref NLBOrthanc1TargetGroupDICOM
+      NetworkConfiguration: 
+        AwsvpcConfiguration:
+          AssignPublicIp: ENABLED
+          SecurityGroups:
+            - !Ref SGOrthanc1
+          Subnets: !Ref OrthancSubnetIDs
+      TaskDefinition: !Ref Orthanc1TaskDef
+
+  ChangePooler1TaskRole:
+    Type: AWS::IAM::Role
+    Condition: DeployAll
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Action:
+              - sts:AssumeRole
+            Effect: Allow
+            Principal:
+              Service: ecs-tasks.amazonaws.com
+      Policies:
+        - PolicyName: main
+          PolicyDocument:
+            Version: 2012-10-17
+            Statement:
+              - Effect: Allow
+                Resource: !GetAtt SQSQueue1.Arn
+                Action: sqs:SendMessage
+
+  ChangePooler1TaskDef:
+    Type: AWS::ECS::TaskDefinition
+    Condition: DeployAll
+    DependsOn:
+      - BuildProjectChangePoolerStart
+    Properties: 
+      ContainerDefinitions: 
+        - Environment:
+            - Name: AWS_REGION
+              Value: !Ref AWS::Region
+            - Name: RPACS_SQS_QUEUE_URL
+              Value: !Ref SQSQueue1
+            - Name: RPACS_POSTGRESQL_HOSTNAME
+              Value: !GetAtt DBCluster.Endpoint.Address
+            - Name: RPACS_POSTGRESQL_USERNAME
+              Value: awsuser
+            - Name: RPACS_POSTGRESQL_DB_NAME
+              Value: rpacs
+            - Name: RPACS_ORTHANC_HOSTNAME
+              Value: !Sub http://${NLBOrthanc1.DNSName}:${OrthancPort}
+            - Name: RPACS_ORTHANC_USERNAME
+              Value: awsuser
+          Essential: true
+          Image: !Sub '${RepositoryChangePooler.RepositoryUri}:latest'
+          LogConfiguration:
+            LogDriver: awslogs
+            Options:
+              awslogs-group: !Ref LogGroupChangePooler1
+              awslogs-region: !Ref AWS::Region
+              awslogs-stream-prefix: main
+          Name: main
+          Secrets:
+            - Name: RPACS_POSTGRESQL_PASSWORD
+              ValueFrom: !Ref SecretDB
+            - Name: RPACS_ORTHANC_PASSWORD
+              ValueFrom: !Ref SecretOrthanc1
+      Cpu: 256
+      ExecutionRoleArn: !Ref TaskExecutionRole
+      Memory: 512
+      NetworkMode: awsvpc
+      RequiresCompatibilities: 
+        - FARGATE
+      TaskRoleArn: !Ref ChangePooler1TaskRole
+
+  ChangePooler1Service:
+    Type: AWS::ECS::Service
+    Condition: DeployAll
+    DependsOn:
+      - DBInstancePrimary
+      - Orthanc1Service
+    Properties: 
+      Cluster: !Ref Cluster
+      DeploymentConfiguration: 
+        MaximumPercent: 100
+        MinimumHealthyPercent: 0
+      DeploymentController: 
+        Type: ECS
+      DesiredCount: 1
+      LaunchType: FARGATE
+      NetworkConfiguration: 
+        AwsvpcConfiguration:
+          AssignPublicIp: ENABLED
+          SecurityGroups:
+            - !Ref SGChangePooler1
+          Subnets: !Ref PrivateSubnetIDs
+      TaskDefinition: !Ref ChangePooler1TaskDef
+
+  DeIdentifierTaskRole:
+    Type: AWS::IAM::Role
+    Condition: DeployAll
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Action:
+              - sts:AssumeRole
+            Effect: Allow
+            Principal:
+              Service: ecs-tasks.amazonaws.com
+      Policies:
+        - PolicyName: main
+          PolicyDocument:
+            Version: 2012-10-17
+            Statement:
+              - Effect: Allow
+                Action:
+                  - sqs:ReceiveMessage
+                  - sqs:DeleteMessage
+                Resource: !GetAtt SQSQueue1.Arn
+              - Effect: Allow
+                Action: rekognition:DetectText
+                Resource: "*"
+              - Effect: Allow
+                Action: s3:GetObject
+                Resource: !Sub ${Bucket.Arn}/config/de-identifier/*
+
+  DeIdentifierTaskDef:
+    Type: AWS::ECS::TaskDefinition
+    Condition: DeployAll
+    DependsOn:
+      - BuildProjectDeIdentifierStart
+    Properties: 
+      ContainerDefinitions: 
+        - Environment:
+            - Name: AWS_REGION
+              Value: !Ref AWS::Region
+            - Name: RPACS_REKOGNITION_REGION
+              Value: !If
+                - RekognitionSameRegion
+                - !Ref AWS::Region
+                - !Ref RekognitionRegion
+            - Name: RPACS_SQS_QUEUE_URL
+              Value: !Ref SQSQueue1
+            - Name: RPACS_POSTGRESQL_HOSTNAME
+              Value: !GetAtt DBCluster.Endpoint.Address
+            - Name: RPACS_POSTGRESQL_USERNAME
+              Value: awsuser
+            - Name: RPACS_POSTGRESQL_DB_NAME
+              Value: rpacs
+            - Name: RPACS_SOURCE_ORTHANC_HOSTNAME
+              Value: !Sub http://${NLBOrthanc1.DNSName}:${OrthancPort}
+            - Name: RPACS_SOURCE_ORTHANC_USERNAME
+              Value: awsuser
+            - Name: RPACS_DESTINATION_ORTHANC_HOSTNAME
+              Value: !Sub http://${NLBOrthanc2.DNSName}:${OrthancPort}
+            - Name: RPACS_DESTINATION_ORTHANC_USERNAME
+              Value: awsuser
+            - Name: RPACS_DEFAULT_CONFIG_FILE
+              Value: !Sub s3://${Bucket}/config/de-identifier/config.yaml
+          Essential: true
+          Image: !Sub '${RepositoryDeIdentifier.RepositoryUri}:latest'
+          LogConfiguration:
+            LogDriver: awslogs
+            Options:
+              awslogs-group: !Ref LogGroupDeIdentifier
+              awslogs-region: !Ref AWS::Region
+              awslogs-stream-prefix: main
+          Name: main
+          Secrets:
+            - Name: RPACS_POSTGRESQL_PASSWORD
+              ValueFrom: !Ref SecretDB
+            - Name: RPACS_SOURCE_ORTHANC_PASSWORD
+              ValueFrom: !Ref SecretOrthanc1
+            - Name: RPACS_DESTINATION_ORTHANC_PASSWORD
+              ValueFrom: !Ref SecretOrthanc2
+      Cpu: 512
+      ExecutionRoleArn: !Ref TaskExecutionRole
+      Memory: 2048
+      NetworkMode: awsvpc
+      RequiresCompatibilities: 
+        - FARGATE
+      TaskRoleArn: !Ref DeIdentifierTaskRole
+
+  DeIdentifierService:
+    Type: AWS::ECS::Service
+    Condition: DeployAll
+    DependsOn:
+      - DBInstancePrimary
+      - Orthanc1Service
+    Properties: 
+      Cluster: !Ref Cluster
+      DeploymentConfiguration: 
+        MaximumPercent: 100
+        MinimumHealthyPercent: 0
+      DeploymentController: 
+        Type: ECS
+      DesiredCount: 1
+      LaunchType: FARGATE
+      NetworkConfiguration: 
+        AwsvpcConfiguration:
+          AssignPublicIp: ENABLED
+          SecurityGroups:
+            - !Ref SGDeIdentifier
+          Subnets: !Ref PrivateSubnetIDs
+      TaskDefinition: !Ref DeIdentifierTaskDef
+
+  Orthanc2Config:
+    Type: AWS::SSM::Parameter
+    Properties: 
+      Type: String
+      Value: !Sub |
+        {
+          "Name": "${AWS::StackName}-Orthanc2",
+          "OverwriteInstances": true,
+          "PostgreSQL": {
+            "Host": "${DBCluster.Endpoint.Address}",
+            "Database": "orthanc",
+            "Username": "awsuser"
+          }
+        }
+
+  Orthanc2TaskRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Action:
+              - sts:AssumeRole
+            Effect: Allow
+            Principal:
+              Service: ecs-tasks.amazonaws.com
+      Policies:
+        - PolicyName: main
+          PolicyDocument:
+            Version: 2012-10-17
+            Statement:
+              - Effect: Allow
+                Action: s3:ListBucket
+                Resource: !GetAtt Bucket.Arn
+              - Effect: Allow
+                Action: s3:GetObject
+                Resource: !Sub ${Bucket.Arn}/config/orthanc2/*
+              - Effect: Allow
+                Action:
+                  - s3:GetObject
+                  - s3:PutObject
+                  - s3:DeleteObject
+                Resource: !Sub ${Bucket.Arn}/dicom/*
+
+  Orthanc2TaskDef:
+    Type: AWS::ECS::TaskDefinition
+    DependsOn:
+      - BuildProjectOrthancStart
+    Properties: 
+      ContainerDefinitions: 
+        - Environment:
+            - Name: RPACS_S3_DICOM_BUCKET_NAME
+              Value: !Ref Bucket
+            - Name: RPACS_S3_DICOM_AWS_REGION
+              Value: !Ref AWS::Region
+            - Name: RPACS_S3_DICOM_KEY_PREFIX
+              Value: dicom/
+            - Name: RPACS_S3_CONFIG_BUCKET_NAME
+              Value: !Ref Bucket
+            - Name: RPACS_S3_CONFIG_AWS_REGION
+              Value: !Ref AWS::Region
+            - Name: RPACS_S3_CONFIG_KEY_PREFIX
+              Value: config/orthanc2/
+          Essential: true
+          Image: !Sub '${RepositoryOrthanc.RepositoryUri}:latest'
+          LogConfiguration:
+            LogDriver: awslogs
+            Options:
+              awslogs-group: !Ref LogGroupOrthanc2
+              awslogs-region: !Ref AWS::Region
+              awslogs-stream-prefix: main
+          Name: main
+          PortMappings:
+            - ContainerPort: 8042
+              HostPort: 8042
+              Protocol: tcp
+            - ContainerPort: 4242
+              HostPort: 4242
+              Protocol: tcp
+          Secrets:
+            - Name: ORTHANC__REGISTERED_USERS
+              ValueFrom: !Ref SecretOrthanc2Full
+            - Name: ORTHANC__POSTGRESQL__PASSWORD
+              ValueFrom: !Ref SecretDB
+            - Name: ORTHANC_JSON
+              ValueFrom: !Sub arn:aws:ssm:${AWS::Region}:${AWS::AccountId}:parameter/${Orthanc2Config}
+      Cpu: 1024
+      ExecutionRoleArn: !Ref TaskExecutionRole
+      Memory: 4096
+      NetworkMode: awsvpc
+      RequiresCompatibilities: 
+        - FARGATE
+      TaskRoleArn: !Ref Orthanc2TaskRole
+
+  Orthanc2Service:
+    Type: AWS::ECS::Service
+    DependsOn:
+      - DBInstancePrimary
+    Properties: 
+      Cluster: !Ref Cluster
+      DeploymentConfiguration: 
+        MaximumPercent: 100
+        MinimumHealthyPercent: 0
+      DeploymentController: 
+        Type: ECS
+      DesiredCount: 1
+      LaunchType: FARGATE
+      LoadBalancers:
+        - ContainerName: main
+          ContainerPort: 8042
+          TargetGroupArn: !Ref NLBOrthanc2TargetGroupHTTP
+        - !If
+            - DeployAll
+            - !Ref AWS::NoValue
+            - ContainerName: main
+              ContainerPort: 4242
+              TargetGroupArn: !Ref NLBOrthanc2TargetGroupDICOM
+      NetworkConfiguration: 
+        AwsvpcConfiguration:
+          AssignPublicIp: ENABLED
+          SecurityGroups:
+            - !Ref SGOrthanc2
+          Subnets: !If
+            - DeployAll
+            - !Ref PrivateSubnetIDs
+            - !Ref OrthancSubnetIDs
+      TaskDefinition: !Ref Orthanc2TaskDef
+
+  ChangePooler2TaskRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Action:
+              - sts:AssumeRole
+            Effect: Allow
+            Principal:
+              Service: ecs-tasks.amazonaws.com
+      Policies:
+        - PolicyName: main
+          PolicyDocument:
+            Version: 2012-10-17
+            Statement:
+              - Effect: Allow
+                Resource: !GetAtt SQSQueue2.Arn
+                Action: sqs:SendMessage
+
+  ChangePooler2TaskDef:
+    Type: AWS::ECS::TaskDefinition
+    DependsOn:
+      - BuildProjectChangePoolerStart
+    Properties: 
+      ContainerDefinitions: 
+        - Environment:
+            - Name: AWS_REGION
+              Value: !Ref AWS::Region
+            - Name: RPACS_SQS_QUEUE_URL
+              Value: !Ref SQSQueue2
+            - Name: RPACS_POSTGRESQL_HOSTNAME
+              Value: !GetAtt DBCluster.Endpoint.Address
+            - Name: RPACS_POSTGRESQL_USERNAME
+              Value: awsuser
+            - Name: RPACS_POSTGRESQL_DB_NAME
+              Value: rpacs
+            - Name: RPACS_ORTHANC_HOSTNAME
+              Value: !Sub http://${NLBOrthanc2.DNSName}:${OrthancPort}
+            - Name: RPACS_ORTHANC_USERNAME
+              Value: awsuser
+          Essential: true
+          Image: !Sub '${RepositoryChangePooler.RepositoryUri}:latest'
+          LogConfiguration:
+            LogDriver: awslogs
+            Options:
+              awslogs-group: !Ref LogGroupChangePooler2
+              awslogs-region: !Ref AWS::Region
+              awslogs-stream-prefix: main
+          Name: main
+          Secrets:
+            - Name: RPACS_POSTGRESQL_PASSWORD
+              ValueFrom: !Ref SecretDB
+            - Name: RPACS_ORTHANC_PASSWORD
+              ValueFrom: !Ref SecretOrthanc2
+      Cpu: 256
+      ExecutionRoleArn: !Ref TaskExecutionRole
+      Memory: 512
+      NetworkMode: awsvpc
+      RequiresCompatibilities: 
+        - FARGATE
+      TaskRoleArn: !Ref ChangePooler2TaskRole
+
+  ChangePooler2Service:
+    Type: AWS::ECS::Service
+    DependsOn:
+      - DBInstancePrimary
+      - Orthanc2Service
+    Properties: 
+      Cluster: !Ref Cluster
+      DeploymentConfiguration: 
+        MaximumPercent: 100
+        MinimumHealthyPercent: 0
+      DeploymentController: 
+        Type: ECS
+      DesiredCount: 1
+      LaunchType: FARGATE
+      NetworkConfiguration: 
+        AwsvpcConfiguration:
+          AssignPublicIp: ENABLED
+          SecurityGroups:
+            - !Ref SGChangePooler2
+          Subnets: !Ref PrivateSubnetIDs
+      TaskDefinition: !Ref ChangePooler2TaskDef
+
+  WebsiteCWAgentConfig:
+    Type: AWS::SSM::Parameter
+    Properties: 
+      Type: String
+      Value: !Sub |
+        {
+          "logs": {
+            "logs_collected": {
+              "files": {
+                "collect_list": [
+                  {
+                    "file_path": "/var/log/rpacs/access.log*",
+                    "log_group_name": "${LogGroupAccessLogs}"
+                  }
+                ]
+              }
+            }
+          }
+        }
+
+  WebsiteTaskRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Action:
+              - sts:AssumeRole
+            Effect: Allow
+            Principal:
+              Service: ecs-tasks.amazonaws.com
+      Policies:
+        - PolicyName: main
+          PolicyDocument:
+            Version: 2012-10-17
+            Statement:
+              - Effect: Allow
+                Action: sqs:SendMessage
+                Resource: !GetAtt SQSQueue2.Arn
+              - Effect: Allow
+                Action: s3:GetObject
+                Resource: !Sub ${Bucket.Arn}/config/website/*
+              - Effect: Allow
+                Action:
+                  - logs:CreateLogGroup
+                  - logs:CreateLogStream
+                  - logs:DescribeLogStreams
+                  - logs:PutLogEvents
+                Resource: !Sub ${LogGroupAccessLogs.Arn}*
+
+  WebsiteTaskDef:
+    Type: AWS::ECS::TaskDefinition
+    DependsOn:
+      - BuildProjectWebsiteStart
+    Properties: 
+      ContainerDefinitions: 
+        - Environment:
+            - Name: AWS_REGION
+              Value: !Ref AWS::Region
+            - Name: RPACS_SQS_QUEUE_URL
+              Value: !Ref SQSQueue2
+            - Name: RPACS_POSTGRESQL_HOSTNAME
+              Value: !GetAtt DBCluster.Endpoint.Address
+            - Name: RPACS_POSTGRESQL_USERNAME
+              Value: awsuser
+            - Name: RPACS_POSTGRESQL_DB_NAME
+              Value: rpacs
+            - Name: RPACS_ORTHANC_HOSTNAME
+              Value: !Sub http://${NLBOrthanc2.DNSName}:${OrthancPort}
+            - Name: RPACS_ORTHANC_USERNAME
+              Value: awsuser
+            - Name: RPACS_PERMISSIONS_FILE
+              Value: !Sub s3://${Bucket}/config/website/permissions.yaml
+            - Name: RPACS_LOG_FILE
+              Value: /var/log/rpacs/access.log
+            - Name: RPACS_SIGN_OUT_URL
+              Value: !Sub https://${CognitoDomain}.auth.${AWS::Region}.amazoncognito.com/logout?client_id=${CognitoClient}&logout_uri=https://${ALB.DNSName}/
+            - Name: RPACS_USER_GUIDE_URL
+              Value: !Sub ${GitHubRepoURL}/blob/${GitHubRepoBranch}/doc/user-guide.md
+          Essential: true
+          Image: !Sub '${RepositoryWebsite.RepositoryUri}:latest'
+          LogConfiguration:
+            LogDriver: awslogs
+            Options:
+              awslogs-group: !Ref LogGroupWebsite
+              awslogs-region: !Ref AWS::Region
+              awslogs-stream-prefix: main
+          MountPoints:
+            - ContainerPath: /var/log/rpacs
+              SourceVolume: accesslog
+          Name: main
+          PortMappings:
+            - ContainerPort: 8080
+              HostPort: 8080
+              Protocol: tcp
+          Secrets:
+            - Name: RPACS_POSTGRESQL_PASSWORD
+              ValueFrom: !Ref SecretDB
+            - Name: RPACS_ORTHANC_PASSWORD
+              ValueFrom: !Ref SecretOrthanc2
+        - Essential: true
+          Image: public.ecr.aws/cloudwatch-agent/cloudwatch-agent:latest
+          MountPoints:
+            - ContainerPath: /var/log/rpacs
+              SourceVolume: accesslog
+          Name: cwagent
+          Secrets:
+            - Name: CW_CONFIG_CONTENT
+              ValueFrom: !Sub arn:aws:ssm:${AWS::Region}:${AWS::AccountId}:parameter/${WebsiteCWAgentConfig}
+      Cpu: 256
+      ExecutionRoleArn: !Ref TaskExecutionRole
+      Memory: 1024
+      NetworkMode: awsvpc
+      RequiresCompatibilities: 
+        - FARGATE
+      TaskRoleArn: !Ref WebsiteTaskRole
+      Volumes:
+        - Name: accesslog
+
+  WebsiteService:
+    Type: AWS::ECS::Service
+    DependsOn:
+      - DBInstancePrimary
+      - Orthanc2Service
+    Properties: 
+      Cluster: !Ref Cluster
+      DeploymentConfiguration: 
+        MaximumPercent: 200
+        MinimumHealthyPercent: 100
+      DeploymentController: 
+        Type: ECS
+      DesiredCount: 1
+      LaunchType: FARGATE
+      LoadBalancers:
+        - ContainerName: main
+          ContainerPort: 8080
+          TargetGroupArn: !Ref ALBTargetGroup
+      NetworkConfiguration: 
+        AwsvpcConfiguration:
+          AssignPublicIp: ENABLED
+          SecurityGroups:
+            - !Ref SGWebsite
+          Subnets: !Ref PrivateSubnetIDs
+      TaskDefinition: !Ref WebsiteTaskDef
+
+  WebsiteWorkerTaskRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Action:
+              - sts:AssumeRole
+            Effect: Allow
+            Principal:
+              Service: ecs-tasks.amazonaws.com
+      Policies:
+        - PolicyName: main
+          PolicyDocument:
+            Version: 2012-10-17
+            Statement:
+              - Effect: Allow
+                Action:
+                  - sqs:ReceiveMessage
+                  - sqs:DeleteMessage
+                  - sqs:ChangeMessageVisibility
+                Resource: !GetAtt SQSQueue2.Arn
+
+  WebsiteWorkerTaskDef:
+    Type: AWS::ECS::TaskDefinition
+    DependsOn:
+      - BuildProjectWebsiteWorkerStart
+    Properties: 
+      ContainerDefinitions: 
+        - Environment:
+            - Name: AWS_REGION
+              Value: !Ref AWS::Region
+            - Name: RPACS_SQS_QUEUE_URL
+              Value: !Ref SQSQueue2
+            - Name: RPACS_POSTGRESQL_HOSTNAME
+              Value: !GetAtt DBCluster.Endpoint.Address
+            - Name: RPACS_POSTGRESQL_USERNAME
+              Value: awsuser
+            - Name: RPACS_POSTGRESQL_DB_NAME
+              Value: rpacs
+            - Name: RPACS_ORTHANC_HOSTNAME
+              Value: !Sub http://${NLBOrthanc2.DNSName}:${OrthancPort}
+            - Name: RPACS_ORTHANC_USERNAME
+              Value: awsuser
+          Essential: true
+          Image: !Sub '${RepositoryWebsiteWorker.RepositoryUri}:latest'
+          LogConfiguration:
+            LogDriver: awslogs
+            Options:
+              awslogs-group: !Ref LogGroupWebsiteWorker
+              awslogs-region: !Ref AWS::Region
+              awslogs-stream-prefix: main
+          Name: main
+          Secrets:
+            - Name: RPACS_POSTGRESQL_PASSWORD
+              ValueFrom: !Ref SecretDB
+            - Name: RPACS_ORTHANC_PASSWORD
+              ValueFrom: !Ref SecretOrthanc2
+      Cpu: 512
+      ExecutionRoleArn: !Ref TaskExecutionRole
+      Memory: 2048
+      NetworkMode: awsvpc
+      RequiresCompatibilities: 
+        - FARGATE
+      TaskRoleArn: !Ref WebsiteWorkerTaskRole
+
+  WebsiteWorkerService:
+    Type: AWS::ECS::Service
+    DependsOn:
+      - DBInstancePrimary
+      - Orthanc2Service
+    Properties: 
+      Cluster: !Ref Cluster
+      DeploymentConfiguration: 
+        MaximumPercent: 100
+        MinimumHealthyPercent: 0
+      DeploymentController: 
+        Type: ECS
+      DesiredCount: 1
+      LaunchType: FARGATE
+      NetworkConfiguration: 
+        AwsvpcConfiguration:
+          AssignPublicIp: ENABLED
+          SecurityGroups:
+            - !Ref SGWebsiteWorker
+          Subnets: !Ref PrivateSubnetIDs
+      TaskDefinition: !Ref WebsiteWorkerTaskDef
+
+Outputs:
+
+  PortalURL:
+    Value: !Sub https://${ALB.DNSName}
+    Description: URL to the self-service portal
+
+  OrthancURL:
+    Value: !If
+      - DeployAll
+      - !Sub http://${NLBOrthanc1.DNSName}:${OrthancPort}
+      - !Sub http://${NLBOrthanc2.DNSName}:${OrthancPort}
+    Description: URL to the Orthanc server where original DICOM files must be sent
+
+  BucketConfig:
+    Value: !Sub s3://${Bucket}/config/
+    Description: Bucket name and key prefix where the config files are stored
+
+  Orthanc1Config:
+    Condition: DeployAll
+    Value: !Ref Orthanc1Config
+    Description: SSM parameter that stores the configuration of the Orthanc Server 1
+
+  Orthanc2Config:
+    Value: !Ref Orthanc2Config
+    Description: SSM parameter that stores the configuration of the Orthanc Server 2
