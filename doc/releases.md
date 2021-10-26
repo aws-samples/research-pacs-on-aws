@@ -2,4 +2,4 @@
 
 Release | Release date | Description
 --- | --- | ---
-1.0 | TODO | Initial release of the solution
+1.0 | Oct 26, 2021 | Initial release of the solution
