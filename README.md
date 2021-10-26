@@ -54,13 +54,13 @@ It also uses [Orthanc](https://www.orthanc-server.com/), a popular open-source P
 
 ### Deploy all components on AWS
 
-This is the primary and easiest deployment pattern. Follow these [instructions](docs/deploy-all-aws.md) to provision the required resources using AWS CloudFormation, and configure the solution.
+This is the primary and easiest deployment pattern. Follow these [instructions](doc/deploy-all-aws.md) to provision the required resources using AWS CloudFormation, and configure the solution.
 
 ### Other deployment patterns
 
 The first Orthanc server and the de-identifier can be deployed either on AWS, or on premises if you choose to send already de-identified data to the cloud. Moreover, if you already have an on-premises system to de-identify medical images, you can choose to not deploy the first Orthanc server and the de-identifier, and forward the medical images directly to the second Orthanc server.
 
-Follow these [instructions](docs/deploy-others.md) to learn more about these other deployment patterns, and to get deployment instructions.
+Follow these [instructions](doc/deploy-others.md) to learn more about these other deployment patterns, and to get deployment instructions.
 
 ## Further reading
 
