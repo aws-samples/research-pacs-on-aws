@@ -5,7 +5,7 @@
 * [Deploy the solution](#deploy-the-solution)
 * [Further reading](#further-reading)
 * [Releases](#releases)
-* [Licensing](#licensing)
+* [License](#license)
 
 ## Challenge to solve
 
