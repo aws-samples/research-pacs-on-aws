@@ -11,11 +11,11 @@
 
 The rise of new technologies in medical imaging, such as artificial intelligence, is an great opportunity to accelerate research and facilitate clinical improvements. This requires access to innovative services and computational capabilities, that the cloud can provide, as well as imaging and clinical data to support research studies.
 
-Historically, it has been difficult for researchers to access medical images collected during the course of clinical care. This sometimes consists of a one-time, manual process where a clinical PACS operator exports and shares images with a research team on a USB stick or a shared file server. Personal health information may persist in exported files, posing a privacy or compliance risk. Different research teams may also need access to different datasets, which requires to govern and enforce access rights to medical images.
+Historically, it has been difficult for researchers to access medical images collected during the course of clinical care. This sometimes consists of a one-time, manual process where a clinical PACS (picture archiving and communication system) operator exports and shares images with a research team on a USB stick or a shared file server. Personal health information may persist in exported files, posing a privacy or compliance risk. Different research teams may also need access to different datasets, which requires to govern and enforce access rights to medical images.
 
 ## Solution presentation
 
-This solution aims to provide an answer to this challenge. It facilitates researchers to access medical images stored in the clinical PACS in a secure and seamless manner, after potentially identifying information is removeed, and allows medical images to be exported to Amazon S3 in order to leverage cloud capabilities for processing.
+This solution aims to provide an answer to this challenge. It facilitates secure and seamless access to medical images stored inside a clinical PACS for researchers. Potentially identifying information can be removed and medical images can be exported to Amazon S3 in order to leverage cloud capabilities for further processing.
 
 ### Key features
 
