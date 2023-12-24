@@ -8,7 +8,7 @@ ARG S3_PLUGIN_BRANCH=default
 ARG REPO_URL
 ARG REPO_BRANCH
 RUN apt-get -y update
-RUN apt-get install -y git mercurial build-essential unzip cmake libcrypto++-dev wget
+RUN apt-get install -y git mercurial build-essential unzip cmake libcrypto++-dev libssl-dev wget
 WORKDIR /tmp
 RUN hg clone https://hg.orthanc-server.com/orthanc-object-storage/
 WORKDIR /tmp/orthanc-object-storage
