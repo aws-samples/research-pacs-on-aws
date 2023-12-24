@@ -13,6 +13,16 @@ WORKDIR /tmp
 RUN hg clone https://hg.orthanc-server.com/orthanc-object-storage/
 WORKDIR /tmp/orthanc-object-storage
 RUN hg up -c "$S3_PLUGIN_BRANCH"
+
+# Switch to a specific version of OpenSSL
+WORKDIR /tmp/build
+RUN wget https://www.openssl.org/source/openssl-1.1.1l.tar.gz
+RUN tar -xzvf openssl-1.1.1l.tar.gz
+WORKDIR /tmp/build/openssl-1.1.1l
+
+# Build OpenSSL
+RUN ./config && make && make install
+
 WORKDIR /tmp/build
 RUN cmake -DSTATIC_BUILD=ON -DCMAKE_BUILD_TYPE=Release -DUSE_VCPKG_PACKAGES=OFF -DUSE_SYSTEM_GOOGLE_TEST=OFF ../orthanc-object-storage/Aws
 RUN CORES=`grep -c ^processor /proc/cpuinfo` && make -j$CORES
