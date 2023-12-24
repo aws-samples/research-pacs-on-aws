@@ -9,10 +9,10 @@ ARG REPO_URL
 ARG REPO_BRANCH
 RUN apt-get -y update
 RUN apt-get install -y git mercurial build-essential unzip cmake wget
-WORKDIR /tmp
-RUN hg clone https://hg.orthanc-server.com/orthanc-object-storage/
-WORKDIR /tmp/orthanc-object-storage
-RUN hg up -c "$S3_PLUGIN_BRANCH"
+#WORKDIR /tmp
+#RUN hg clone https://hg.orthanc-server.com/orthanc-object-storage/
+#WORKDIR /tmp/orthanc-object-storage
+#RUN hg up -c "$S3_PLUGIN_BRANCH"
 
 # # Switch to a specific version of OpenSSL
 # WORKDIR /tmp/build
@@ -24,7 +24,7 @@ RUN hg up -c "$S3_PLUGIN_BRANCH"
 # RUN ./config && make && make install
 
 WORKDIR /tmp/build
-RUN cmake -DSTATIC_BUILD=ON -DCMAKE_BUILD_TYPE=Release -DUSE_VCPKG_PACKAGES=OFF -DUSE_SYSTEM_GOOGLE_TEST=OFF ../orthanc-object-storage/Aws
+#RUN cmake -DSTATIC_BUILD=ON -DCMAKE_BUILD_TYPE=Release -DUSE_VCPKG_PACKAGES=OFF -DUSE_SYSTEM_GOOGLE_TEST=OFF ../orthanc-object-storage/Aws
 RUN CORES=`grep -c ^processor /proc/cpuinfo` && make -j$CORES
 RUN wget $REPO_URL/raw/$REPO_BRANCH/dockerfile/orthanc_s3.py
 
