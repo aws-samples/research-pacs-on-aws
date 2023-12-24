@@ -8,20 +8,20 @@ ARG S3_PLUGIN_BRANCH=default
 ARG REPO_URL
 ARG REPO_BRANCH
 RUN apt-get -y update
-RUN apt-get install -y git mercurial build-essential unzip wget
+RUN apt-get install -y git mercurial build-essential unzip cmake wget
 WORKDIR /tmp
 RUN hg clone https://hg.orthanc-server.com/orthanc-object-storage/
 WORKDIR /tmp/orthanc-object-storage
 RUN hg up -c "$S3_PLUGIN_BRANCH"
 
-# Switch to a specific version of OpenSSL
-WORKDIR /tmp/build
-RUN wget https://www.openssl.org/source/openssl-3.2.0.tar.gz
-RUN tar -xzvf openssl-3.2.0.tar.gz
-WORKDIR /tmp/build/openssl-3.2.0
+# # Switch to a specific version of OpenSSL
+# WORKDIR /tmp/build
+# RUN wget https://www.openssl.org/source/openssl-3.2.0.tar.gz
+# RUN tar -xzvf openssl-3.2.0.tar.gz
+# WORKDIR /tmp/build/openssl-3.2.0
 
-# Build OpenSSL
-RUN ./config && make && make install
+# # Build OpenSSL
+# RUN ./config && make && make install
 
 WORKDIR /tmp/build
 RUN cmake -DSTATIC_BUILD=ON -DCMAKE_BUILD_TYPE=Release -DUSE_VCPKG_PACKAGES=OFF -DUSE_SYSTEM_GOOGLE_TEST=OFF ../orthanc-object-storage/Aws
