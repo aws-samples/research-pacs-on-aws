@@ -25,7 +25,7 @@ RUN apt-get install -y git mercurial build-essential unzip cmake wget
 
 WORKDIR /tmp/build
 #RUN cmake -DSTATIC_BUILD=ON -DCMAKE_BUILD_TYPE=Release -DUSE_VCPKG_PACKAGES=OFF -DUSE_SYSTEM_GOOGLE_TEST=OFF ../orthanc-object-storage/Aws
-RUN CORES=`grep -c ^processor /proc/cpuinfo` && make -j$CORES
+#RUN CORES=`grep -c ^processor /proc/cpuinfo` && make -j$CORES
 RUN wget $REPO_URL/raw/$REPO_BRANCH/dockerfile/orthanc_s3.py
 
 FROM osimis/orthanc:$ORTHANC_VERSION
