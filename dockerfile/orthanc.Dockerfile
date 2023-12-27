@@ -23,14 +23,14 @@ RUN apt-get install -y git mercurial build-essential unzip cmake wget
 # # Build OpenSSL
 # RUN ./config && make && make install
 
-WORKDIR /tmp/build
+#WORKDIR /tmp/build
 #RUN cmake -DSTATIC_BUILD=ON -DCMAKE_BUILD_TYPE=Release -DUSE_VCPKG_PACKAGES=OFF -DUSE_SYSTEM_GOOGLE_TEST=OFF ../orthanc-object-storage/Aws
 #RUN CORES=`grep -c ^processor /proc/cpuinfo` && make -j$CORES
-RUN wget $REPO_URL/raw/$REPO_BRANCH/dockerfile/orthanc_s3.py
+#RUN wget $REPO_URL/raw/$REPO_BRANCH/dockerfile/orthanc_s3.py
 
 FROM osimis/orthanc:$ORTHANC_VERSION
 RUN pip3 install boto3
-COPY --from=orthanc_build /tmp/build/libOrthancAwsS3Storage.so /usr/share/orthanc/plugins-available/
-COPY --from=orthanc_build /tmp/build/orthanc_s3.py /
-RUN chmod +x orthanc_s3.py
-ENV BEFORE_ORTHANC_STARTUP_SCRIPT=/orthanc_s3.py
+#COPY --from=orthanc_build /tmp/build/libOrthancAwsS3Storage.so /usr/share/orthanc/plugins-available/
+#COPY --from=orthanc_build /tmp/build/orthanc_s3.py /
+#RUN chmod +x orthanc_s3.py
+#ENV BEFORE_ORTHANC_STARTUP_SCRIPT=/orthanc_s3.py
