@@ -29,7 +29,7 @@ RUN apt-get install -y git mercurial build-essential unzip cmake wget
 #RUN wget $REPO_URL/raw/$REPO_BRANCH/dockerfile/orthanc_s3.py
 
 FROM osimis/orthanc:$ORTHANC_VERSION
-RUN pip3 install boto3
+RUN pip3 install --upgrade boto3 psycopg2-binary pydicom pyyaml
 #COPY --from=orthanc_build /tmp/build/libOrthancAwsS3Storage.so /usr/share/orthanc/plugins-available/
 #COPY --from=orthanc_build /tmp/build/orthanc_s3.py /
 #RUN chmod +x orthanc_s3.py

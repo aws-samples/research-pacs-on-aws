@@ -16,6 +16,7 @@ setup(
     'boto3',
     'flask',
     'requests',
-    'waitress'
+    'waitress',
+    'werkzeug'
   ]
 )
