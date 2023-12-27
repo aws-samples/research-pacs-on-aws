@@ -17,7 +17,8 @@ from waitress import serve
 from werkzeug.exceptions import HTTPException
 from werkzeug.serving import WSGIRequestHandler
 #from werkzeug.urls import url_encode
-from werkzeug._internal import _url_encode as url_encode
+#from werkzeug._internal import _url_encode as url_encode
+from urllib.parse import urlencode
 
 import research_pacs.shared.dicom_json as rpacs_dicom_json
 import research_pacs.shared.util as rpacs_util
@@ -313,7 +314,7 @@ def search_page():
     def rewrite_full_path_new_offset(new_offset):
       args = request.args.copy()
       args['offset'] = new_offset
-      return f'{request.path}?{url_encode(args)}'
+      return f'{request.path}?{urlencode(args)}'
     
     # Retrieve the number of instances and series that match the query, and associated details 
     # for up to `env.results_per_page` from the offset `offset`
