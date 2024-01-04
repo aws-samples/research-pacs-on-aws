@@ -55,16 +55,16 @@ def get_env():
   
   # Hostname of the Orthanc server that stores the de-identified DICOM files. Format: 
   # http[s]://hostname (do not include a trailing slash)
-  env.add('dst_orthanc_host', 'RPACS_DESTINATION_ORTHANC_HOSTNAME')
-  host_lower = env.dst_orthanc_host.lower()
-  assert host_lower.startswith('http://') or host_lower.startswith('https://'), 'Orthanc hostname format is incorrect'
-  assert not host_lower.endswith('/'), 'Orthanc hostname format is incorrect'
+  #env.add('dst_orthanc_host', 'RPACS_DESTINATION_ORTHANC_HOSTNAME')
+  #host_lower = env.dst_orthanc_host.lower()
+  #assert host_lower.startswith('http://') or host_lower.startswith('https://'), 'Orthanc hostname format is incorrect'
+  #assert not host_lower.endswith('/'), 'Orthanc hostname format is incorrect'
   
   # User name to use to connect to the Orthanc server
-  env.add('dst_orthanc_user', 'RPACS_DESTINATION_ORTHANC_USERNAME')
+  #env.add('dst_orthanc_user', 'RPACS_DESTINATION_ORTHANC_USERNAME')
   
   # Password to use to connect to the Orthanc server
-  env.add('dst_orthanc_pwd', 'RPACS_DESTINATION_ORTHANC_PASSWORD', password=True)
+  #env.add('dst_orthanc_pwd', 'RPACS_DESTINATION_ORTHANC_PASSWORD', password=True)
   
   # Default location of the config file (file containing labelling, filtering and 
   # transformation rules). Can be a S3 object (s3://bucket/key) or a local file
