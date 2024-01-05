@@ -35,7 +35,7 @@ def main():
     client.add('db_msg', DBKeyJsonValue(db_client=client.db, table_name="rpacs_related_msg"))
     client.add('db_mapping', DBDicomMapping(db_client=client.db))
     client.add('src_orthanc', OrthancClient(env.src_orthanc_host, env.src_orthanc_user, env.src_orthanc_pwd))
-    client.add('dst_orthanc', OrthancClient(env.dst_orthanc_host, env.dst_orthanc_user, env.dst_orthanc_pwd))
+    #client.add('dst_orthanc', OrthancClient(env.dst_orthanc_host, env.dst_orthanc_user, env.dst_orthanc_pwd))
     client.add('sqs', boto3.client('sqs', region_name=env.region))
     
   # Exit if any of the previous steps failed
