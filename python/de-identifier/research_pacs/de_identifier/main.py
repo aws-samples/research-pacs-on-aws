@@ -174,7 +174,9 @@ def process_new_dicom(msg):
   if not dicom_source.startswith('orthanc://'):
     try:
       dicom_file = rpacs_util.load_file(dicom_source, env.region, 'bytes')
-      instance_id = client.src_orthanc.upload_instance(dicom_file)
+      location = f's3://pacs-bucket-wvdeqzoc1jc3/dicom/{dicom_source.replace("orthanc://", "")}'
+      instance_id = rpacs_util.s3_write_file(dicom_file, location, env.region, 'bytes')
+      # instance_id = client.src_orthanc.upload_instance(dicom_file)
       client.db_msg.upsert(instance_id, msg)
       logger.info(f"Uploaded the local DICOM file to Orthanc - Instance ID={instance_id}")
     except Exception as e:
@@ -261,7 +263,9 @@ def process_new_dicom_orthanc(src_instance_id, msg):
           rpacs_util.write_file(dst_dicom, msg['Destination'], env.region, 'bytes')
           logger.info(f"Uploaded the de-identified DICOM file to \"{msg['Destination']}\"")
         else:
-          dst_instance_id = client.dst_orthanc.upload_instance(dst_dicom)
+          dst_instance_id = rpacs_util.s3_write_file(dicom_file, location, env.region, 'bytes')
+          # dst_instance_id = client.dst_orthanc.upload_instance(dst_dicom)
+          rpacs_util.write_file(dicom_file, location, env.region, 'bytes')
           logger.info(f"Uploaded the de-identified DICOM file to Orthanc - ID={dst_instance_id}")
     except Exception as e:
       raise Exception(f'Failed the write the de-identified DICOM file - {e}')
@@ -389,7 +393,8 @@ def deidentify_dicom_orthanc(instance_id, src_dicom, config, logs):
       
       # Upload the de-identified DICOM file to Orthanc. This new DICOM file should be ignored by the 
       # de-identifier
-      tmp_instance_id = client.src_orthanc.upload_instance(dst_dicom)
+      # tmp_instance_id = client.src_orthanc.upload_instance(dst_dicom)
+      tmp_instance_id = rpacs_util.s3_write_file(dicom_file, location, env.region, 'bytes')
       client.db_msg.upsert(tmp_instance_id, {'Skip': True})
       
       # Download a transcoded version of the de-identified DICOM file, and we restore the SOP 

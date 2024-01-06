@@ -105,7 +105,32 @@ def write_file(content, location, aws_region, content_type='str', s3_credentials
     logger.debug(msg_err)
     raise Exception(msg_err)
 
-  
+
+def s3_write_file(content, location, aws_region, content_type='str', s3_credentials=None):
+  logger.debug(f'Write the file "{location}" as "{content_type}"')
+  try:
+    instance_id = ''
+    if content_type == 'bytes':
+      content_bytes = content
+    elif content_type == 'str':
+      content_bytes.encode()
+    elif content_type == 'json':
+      content_bytes = json.dumps(content, indent=4, sort_keys=True).encode()
+
+    # Save to S3 if the location matches the S3 pattern
+    if 's3://' in location:
+      if s3_credentials != None:
+        s3 = boto3.client('s3', region_name=aws_region, **s3_credentials)
+      else:
+        s3 = boto3.client('s3', region_name=aws_region)
+      s3_response = s3.put_object(Body=content_bytes, Bucket=match.group(1), Key=match.group(2))
+      instance_id = location.rsplit('/', maxsplit=1)[-1]
+    return instance_id
+  except Exception as e:
+    msg_err = f'Failed to write the "{content_type}" input to {location} - {e}'
+    logger.debug(msg_err)
+    raise Exception(msg_err)
+
 class EnvVarList:
   """
   Retrieve and store environment variables. Environment variable values are accessible as  
