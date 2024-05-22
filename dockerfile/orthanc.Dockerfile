@@ -3,7 +3,7 @@
 
 ARG ORTHANC_VERSION=latest
 
-FROM osimis/orthanc:$ORTHANC_VERSION as orthanc_build
+FROM orthancteam/orthanc:$ORTHANC_VERSION as orthanc_build
 ARG S3_PLUGIN_BRANCH=default
 ARG REPO_URL
 ARG REPO_BRANCH
@@ -18,7 +18,7 @@ RUN cmake -DSTATIC_BUILD=ON -DCMAKE_BUILD_TYPE=Release -DUSE_VCPKG_PACKAGES=OFF 
 RUN CORES=`grep -c ^processor /proc/cpuinfo` && make -j$CORES
 RUN wget $REPO_URL/raw/$REPO_BRANCH/dockerfile/orthanc_s3.py
 
-FROM osimis/orthanc:$ORTHANC_VERSION
+FROM orthancteam/orthanc:$ORTHANC_VERSION
 RUN pip3 install boto3
 COPY --from=orthanc_build /tmp/build/libOrthancAwsS3Storage.so /usr/share/orthanc/plugins-available/
 COPY --from=orthanc_build /tmp/build/orthanc_s3.py /

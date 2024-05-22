@@ -3,6 +3,9 @@ __pycache__/
 *.py[cod]
 *$py.class
 
+#ignore this
+venv-resarch-pacs/
+
 # C extensions
 *.so
 
