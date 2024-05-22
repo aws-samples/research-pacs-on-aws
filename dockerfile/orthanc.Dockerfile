@@ -19,7 +19,7 @@ RUN CORES=`grep -c ^processor /proc/cpuinfo` && make -j$CORES
 RUN wget $REPO_URL/raw/$REPO_BRANCH/dockerfile/orthanc_s3.py
 
 FROM orthancteam/orthanc:$ORTHANC_VERSION
-RUN pip3 install boto3
+RUN pip3 install boto3 --break-system-packages
 COPY --from=orthanc_build /tmp/build/libOrthancAwsS3Storage.so /usr/share/orthanc/plugins-available/
 COPY --from=orthanc_build /tmp/build/orthanc_s3.py /
 RUN chmod +x orthanc_s3.py
