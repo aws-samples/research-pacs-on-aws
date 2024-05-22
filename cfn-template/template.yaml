@@ -671,7 +671,7 @@ Resources:
       DBSubnetGroupName: !Ref DBSubnetGroup
       Engine: aurora-postgresql
       EngineMode: provisioned
-      EngineVersion: "12.7"
+      EngineVersion: "15.4"
       MasterUsername: awsuser
       MasterUserPassword: !Sub '{{resolve:secretsmanager:${SecretDB}:SecretString}}'
       Port: 5432
