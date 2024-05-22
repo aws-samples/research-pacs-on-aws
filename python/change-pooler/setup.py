@@ -9,5 +9,6 @@ setup(
   packages=['research_pacs.change_pooler'],
   install_requires=[
     'boto3',
+    'setuptools'
   ]
 )
