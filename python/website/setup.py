@@ -14,8 +14,8 @@ setup(
   },
   install_requires=[
     'boto3',
-    'flask=2.3.2',
+    'flask >= 2, < 3',
     'requests',
-    'waitress=2.1.2'
+    'waitress >= 2, < 3'
   ]
 )
