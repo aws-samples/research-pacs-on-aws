@@ -16,7 +16,8 @@ from flask import request, g
 from waitress import serve
 from werkzeug.exceptions import HTTPException
 from werkzeug.serving import WSGIRequestHandler
-from werkzeug.urls import url_encode
+# from werkzeug.urls import url_encode
+from urllib.parse import quote as url_encode
 
 import research_pacs.shared.dicom_json as rpacs_dicom_json
 import research_pacs.shared.util as rpacs_util
