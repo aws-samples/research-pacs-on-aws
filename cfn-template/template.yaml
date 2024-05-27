@@ -139,10 +139,10 @@ Parameters:
     Type: String
     Default: latest
     Description: >
-      Version of the Osimis Docker image to use. By default, the solution uses the latest version 
+      Version of the Orthancteam Docker image to use. By default, the solution uses the latest version 
       available. You can provide a specific version listed at 
-      https://hub.docker.com/r/osimis/orthanc/tags. 
-      The solution was successfully test with the version 21.9.2
+      https://hub.docker.com/r/orthancteam/orthanc/tags
+      The solution was successfully test with the version 24.5.1
   S3PluginBranch:
     Type: String
     Default: default
@@ -671,7 +671,7 @@ Resources:
       DBSubnetGroupName: !Ref DBSubnetGroup
       Engine: aurora-postgresql
       EngineMode: provisioned
-      EngineVersion: "12.7"
+      EngineVersion: "15.4"
       MasterUsername: awsuser
       MasterUserPassword: !Sub '{{resolve:secretsmanager:${SecretDB}:SecretString}}'
       Port: 5432

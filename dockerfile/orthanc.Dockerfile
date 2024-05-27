@@ -3,12 +3,12 @@
 
 ARG ORTHANC_VERSION=latest
 
-FROM osimis/orthanc:$ORTHANC_VERSION as orthanc_build
+FROM orthancteam/orthanc:$ORTHANC_VERSION as orthanc_build
 ARG S3_PLUGIN_BRANCH=default
 ARG REPO_URL
 ARG REPO_BRANCH
 RUN apt-get -y update
-RUN apt-get install -y git mercurial build-essential unzip cmake libcrypto++-dev wget
+RUN apt-get install -y git mercurial build-essential unzip cmake libcrypto++-dev wget python3 python3-pip python3-setuptools
 WORKDIR /tmp
 RUN hg clone https://hg.orthanc-server.com/orthanc-object-storage/
 WORKDIR /tmp/orthanc-object-storage
@@ -18,8 +18,8 @@ RUN cmake -DSTATIC_BUILD=ON -DCMAKE_BUILD_TYPE=Release -DUSE_VCPKG_PACKAGES=OFF 
 RUN CORES=`grep -c ^processor /proc/cpuinfo` && make -j$CORES
 RUN wget $REPO_URL/raw/$REPO_BRANCH/dockerfile/orthanc_s3.py
 
-FROM osimis/orthanc:$ORTHANC_VERSION
-RUN pip3 install boto3
+FROM orthancteam/orthanc:$ORTHANC_VERSION
+RUN pip3 install boto3 --break-system-packages
 COPY --from=orthanc_build /tmp/build/libOrthancAwsS3Storage.so /usr/share/orthanc/plugins-available/
 COPY --from=orthanc_build /tmp/build/orthanc_s3.py /
 RUN chmod +x orthanc_s3.py
