@@ -20,7 +20,7 @@ requests==2.32.2
 setuptools==70.0.0
 s3transfer==0.10.1
 six==1.16.0
-urllib3==1.26.18
+urllib3==1.26.19
 waitress==3.0.0
 Werkzeug==2.3.6
 zipp==3.18.2
