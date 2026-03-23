@@ -23,4 +23,4 @@ six==1.16.0
 urllib3==1.26.19
 waitress==3.0.0
 Werkzeug==2.3.6
-zipp==3.18.2
+zipp==3.19.1
